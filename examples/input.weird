@@ -1,0 +1,11 @@
+main() -> Int {
+	print("Enter something: ");
+	Text word = input();
+
+	// todo: string concat
+	print("You entered ");
+	print(word);
+	print(".\n");
+
+	return 0;
+}

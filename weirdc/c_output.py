@@ -10,14 +10,37 @@ from weirdc import ast
 
 PRELOAD = r"""
 #include <stdio.h>
+#include <string.h>
 
 
 static void do_the_print(char *message)
 {
-    printf("%s\n", message);
+    printf("%s", message);
+}
+
+
+#define MAXLEN 1000
+
+static char *do_the_input()
+{
+    char c, result[MAXLEN+1];    /* 1 is the 0 at the end */
+    int i;
+
+    for (i = 0; i < MAXLEN; i++) {
+        c = getchar();
+        if (c == EOF || c == '\n')
+            break;
+        result[i] = c;
+    }
+    result[i] = 0;
+
+    /* this sucks because this isn't freed anywhere :(
+       like david beazley says: call it a prototype */
+    return strdup(result);
 }
 """
-names = {'Int': 'int', 'print': 'do_the_print', 'main': 'main'}
+names = {'Int': 'int', 'Text': 'char *',
+         'print': 'do_the_print', 'input': 'do_the_input', 'main': 'main'}
 
 
 def random_name():
@@ -40,6 +63,13 @@ def unparse(node):
         return unparse(node.expression) + ';'
     if isinstance(node, ast.Return):
         return 'return %s;' % unparse(node.value)
+
+    if isinstance(node, ast.Declaration):
+        names[node.variable] = node.variable
+        if node.value is None:
+            return '%s %s;' % (unparse(node.type), node.variable)
+        return '%s %s = %s;' % (
+            unparse(node.type), node.variable, unparse(node.value))
 
     if isinstance(node, ast.FunctionCall):
         return '%s(%s)' % (

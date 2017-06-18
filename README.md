@@ -7,7 +7,7 @@ will probably change a lot later.
 Here's a Hello World from [examples/hello.weird](examples/hello.weird):
 
     main() -> Int {
-        print("Hello World!");
+        print("Hello World!\n");
         return 0;
     }
 
