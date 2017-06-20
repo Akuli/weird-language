@@ -6,15 +6,13 @@
 #include "object.h"
 
 
-static void weirderr_nomem()
-{
-	fprintf(stderr, "not enough memory :(\n");
-	exit(1);
-}
+static void weirderr_nomem(void) { fprintf(stderr, "not enough memory\n"); exit(1); }
 
 // strdup() isn't defined in C99 :(
 static char *weird_strdup(char *str)
 {
+	/* some people say that sizeof(char) is defined to be 1, but I
+	 * didn't find it in the standards */
 	size_t count = strlen(str) + 1;		// remember the \0 at end
 	char *result = malloc(count * sizeof(char));
 	for (size_t i = 0; i < count; i++)
@@ -24,23 +22,22 @@ static char *weird_strdup(char *str)
 
 
 struct WeirdObject *
-weirdobject_new(char *typename, void (*destructor)(struct WeirdObject *), void *data)
+weirdobject_new(char *typename, void (*destructor)(void *), void *data)
 {
-	struct WeirdObject *result = malloc(sizeof (struct WeirdObject));
-	if (!result)
+	struct WeirdObject *me = malloc(sizeof (struct WeirdObject));
+	if (!me)
 		weirderr_nomem();
 
-	printf("creating %p\n", result);
-	result->typename = weird_strdup(typename);
-	result->refcount = 1;
-	result->destructor = destructor;
-	result->data = data;
-	return result;
+	printf("object.c: creating   %10p with data %p\n", me, data);
+	me->typename = weird_strdup(typename);
+	me->refcount = 0;
+	me->destructor = destructor;
+	me->data = data;
+	return me;
 }
 
 void weirdobject_incref(struct WeirdObject *me)
 {
-	assert(me->refcount > 0);
 	me->refcount++;
 }
 
@@ -49,9 +46,9 @@ void weirdobject_decref(struct WeirdObject *me)
 	assert(me->refcount > 0);
 	me->refcount--;
 	if (me->refcount == 0) {
-		printf("destroying %p\n", me);
+		printf("object.c: destroying %10p with data %p\n", me, me->data);
 		if (me->destructor)
-			me->destructor(me);
+			me->destructor(me->data);
 		free(me->typename);
 		free(me);
 	}

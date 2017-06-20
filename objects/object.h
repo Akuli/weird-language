@@ -1,3 +1,6 @@
+#ifndef WEIRD_OBJECT_H_
+#define WEIRD_OBJECT_H_
+
 /**
  * All objects are struct WeirdObject.
  *
@@ -10,8 +13,11 @@
  * 		This will probably change later.
  *
  * 	size_t refcount;
- * 		Number of references to this object. Use ``obj->refcount == 0``
- * 		to check if an object has been destroyed.
+ * 		Number of references to this object.
+ *
+ * 		Note that you can't use ``obj->refcount == 0`` to check if an
+ * 		object has been destroyed because objects are free()d during
+ * 		destruction.
  *
  * 		.. seealso:: :func:`weirdobject_incref`, :func:`weirdobject_decref`
  *
@@ -21,17 +27,19 @@
 struct WeirdObject {
 	char *typename;
 	size_t refcount;
-	void (*destructor)(struct WeirdObject *);		// can be NULL
-	void *data;		// can be anything
+	void (*destructor)(void *);
+	void *data;
 };
 
 /**
  * Create a new object.
  *
- * **This returns a new reference.**
+ * @param typename name of this type, as string
+ * @param destructor ``destructor(data)`` will be called when the object is destroyed
+ * @param data pointer to any arbitary data associated with the object
  */
 struct WeirdObject *
-weirdobject_new(char *typename, void (*destructor)(struct WeirdObject *), void *data);
+weirdobject_new(char *typename, void (*destructor)(void *), void *data);
 
 /**
  * Increment reference count.
@@ -39,9 +47,10 @@ weirdobject_new(char *typename, void (*destructor)(struct WeirdObject *), void *
 void weirdobject_incref(struct WeirdObject *me);
 
 /**
- * Decrement reference count .
+ * Decrement reference count.
  *
  * The object is destroyed if the reference count is 0.
- * Return the new reference count.
  */
 void weirdobject_decref(struct WeirdObject *me);
+
+#endif		// WEIRD_OBJECT_H_
