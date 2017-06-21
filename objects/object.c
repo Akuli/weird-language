@@ -28,9 +28,9 @@ weirdobject_new(char *typename, void (*destructor)(void *), void *data)
 	if (!me)
 		weirderr_nomem();
 
-	printf("object.c: creating   %10p with data %p\n", me, data);
+	printf("object.c: creating %s %p with data %p\n", typename, me, data);
 	me->typename = weird_strdup(typename);
-	me->refcount = 0;
+	me->refcount = 1;
 	me->destructor = destructor;
 	me->data = data;
 	return me;
@@ -46,7 +46,8 @@ void weirdobject_decref(struct WeirdObject *me)
 	assert(me->refcount > 0);
 	me->refcount--;
 	if (me->refcount == 0) {
-		printf("object.c: destroying %10p with data %p\n", me, me->data);
+		printf("object.c: destroying %s %p with data %p\n",
+			(char *) me->typename, me, me->data);
 		if (me->destructor)
 			me->destructor(me->data);
 		free(me->typename);

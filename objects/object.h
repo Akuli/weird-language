@@ -34,6 +34,8 @@ struct WeirdObject {
 /**
  * Create a new object.
  *
+ * RETURNS A NEW REFERENCE.
+ *
  * @param typename name of this type, as string
  * @param destructor ``destructor(data)`` will be called when the object is destroyed
  * @param data pointer to any arbitary data associated with the object
