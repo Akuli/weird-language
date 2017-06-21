@@ -51,12 +51,13 @@ FunctionCall = _nodetype('FunctionCall', ['function', 'arguments'])
 ExpressionStatement = _nodetype('ExpressionStatement', ['expression'])
 Declaration = _nodetype('Declaration', ['type', 'variable', 'value'])
 Assignment = _nodetype('Assignment', ['variable', 'value'])
+If = _nodetype('If', ['condition', 'body'])
 FunctionDef = _nodetype('FunctionDef', [
     'name', 'arguments', 'returntype', 'body'])
 Return = _nodetype('Return', ['value'])
 
 
-KEYWORDS = {'return', 'me', 'my'}
+KEYWORDS = {'return', 'if'}
 
 
 class _Parser:
@@ -155,6 +156,18 @@ class _Parser:
         semicolon = self.tokens.check_and_pop('OP', ';')
         return Assignment(variable.start, semicolon.end, variable, value)
 
+    def parse_if(self):
+        the_if = self.tokens.check_and_pop('NAME', 'if')
+        condition = self.parse_expression()
+        self.tokens.check_and_pop('OP', '{')
+
+        body = []
+        while self.tokens.coming_up().info != ('OP', '}'):
+            body.append(self.parse_statement())
+
+        closing_brace = self.tokens.check_and_pop('OP', '}')
+        return If(the_if.start, closing_brace.end, condition, body)
+
     def _type_and_name(self):
         # Int a
         # return (typenode, name_string)
@@ -190,9 +203,11 @@ class _Parser:
         if self.tokens.coming_up(1).kind == 'NAME':
             if self.tokens.coming_up(1).value == 'return':
                 return self.parse_return()
+            if self.tokens.coming_up(1).value == 'if':
+                return self.parse_if()
 
             after_name = self.tokens.coming_up(2)
-            if after_name.kind == 'OP' and after_name.value == '=':
+            if after_name.info == ('OP', '='):
                 return self.assignment()
             if after_name.kind == 'NAME':
                 return self.parse_declaration()
@@ -233,7 +248,7 @@ class _Parser:
             if self.tokens.coming_up(2).info == ('OP', '('):
                 yield self.parse_function_def()
             else:
-                yield
+                yield self.parse_statement()
 
 
 def parse(tokens):
@@ -249,8 +264,11 @@ if __name__ == '__main__':
 
     main(String s) -> Int {
         Int a = 1;
-        print(a);
+        if a {
+            print("WOLO WOLO");
+        }
         return 123;
     }
     '''
-    print(parse(tokenizer.tokenize(code)))
+    for node in parse(tokenizer.tokenize(code)):
+        print(node)
