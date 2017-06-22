@@ -4,7 +4,7 @@
 
 #include "object.h"
 
-struct StringData {
+struct _WeirdString_Data {
     char *value;
     size_t len;
 };
