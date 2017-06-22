@@ -55,6 +55,7 @@ If = _nodetype('If', ['condition', 'body'])
 FunctionDef = _nodetype('FunctionDef', [
     'name', 'arguments', 'returntype', 'body'])
 Return = _nodetype('Return', ['value'])
+DecRef = collections.namedtuple("DecRef", ["name"])
 
 
 KEYWORDS = {'return', 'if'}
