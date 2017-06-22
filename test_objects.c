@@ -3,6 +3,7 @@
 #include <string.h>
 #include "objects/object.h"
 #include "objects/list.h"
+#include "objects/integer.h"
 
 #define assert_streq(a, b) assert(strcmp((a), (b)) == 0)
 
@@ -71,11 +72,38 @@ void test_lists(void)
 
 	for (size_t i = 0; i < ITEM_COUNT; i++) {
 		struct WeirdObject *item = weirdlist_getbyindex(list, i);
+		assert(item->refcount == 2);	// initial 1 + incref in getbyindex
 		assert_streq((char *) item->data, vals[i]);
 		weirdobject_decref(item);
 	}
 
 	weirdobject_decref(list);
+}
+#undef ITEM_COUNT
+
+
+void test_integers(void)
+{
+	struct WeirdObject
+		*zero = weirdint_new(0, 1),
+		*a = weirdint_new(10, 1),
+		*b = weirdint_new(20, 1),
+		*c = weirdint_new(10, -1),
+		*aa = weirdint_add(a, a),
+		*ac = weirdint_add(a, c),
+		*bc = weirdint_add(b, c);
+
+	assert(weirdint_eq(aa, b));
+	assert(weirdint_eq(bc, a));
+	assert(weirdint_eq(ac, zero));
+
+	weirdobject_decref(zero);
+	weirdobject_decref(a);
+	weirdobject_decref(b);
+	weirdobject_decref(c);
+	weirdobject_decref(aa);
+	weirdobject_decref(ac);
+	weirdobject_decref(bc);
 }
 
 
@@ -93,6 +121,7 @@ int main(int argc, char **argv)
 	program_name = *argv;
 	run("test_refcounts", test_refcounts);
 	run("test_lists", test_lists);
+	run("test_integers", test_integers);
 	printf("\nall OK\n");
 	return 0;
 }
