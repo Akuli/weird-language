@@ -8,15 +8,13 @@
 
 static void weirderr_nomem(void) { fprintf(stderr, "not enough memory\n"); exit(1); }
 
-// strdup() isn't defined in C99 :(
-static char *weird_strdup(char *str)
+// strdup() isn't defined in C99, this version is based on K&R :)
+static char *strdup(char *str)
 {
-	/* some people say that sizeof(char) is defined to be 1, but I
-	 * didn't find it in the standards */
-	size_t count = strlen(str) + 1;		// remember the \0 at end
-	char *result = malloc(count * sizeof(char));
-	for (size_t i = 0; i < count; i++)
-		result[i] = str[i];
+	char *result = malloc(strlen(str)+1);  // sizeof(char) is always 1, +1 for '\0'
+	if (!result)
+		weirderr_nomem();
+	strcpy(result, str);
 	return result;
 }
 
@@ -29,7 +27,7 @@ weirdobject_new(char *typename, void (*destructor)(void *), void *data)
 		weirderr_nomem();
 
 	printf("object.c: creating %s %p with data %p\n", typename, me, data);
-	me->typename = weird_strdup(typename);
+	me->typename = strdup(typename);
 	me->refcount = 1;
 	me->destructor = destructor;
 	me->data = data;
