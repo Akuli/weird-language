@@ -25,13 +25,8 @@ struct WeirdObject *weirdstring_concat(struct WeirdObject *x, struct WeirdObject
     size_t new_len = x_data->len + y_data->len;
     char *new_value = malloc(sizeof(char) * new_len);
 
-    for (size_t i = 0; i < x_data->len; ++i) {
-        new_value[i] = x_data->value[i];
-    }
-
-    for (size_t j = 0; j < y_data->len; ++j) {
-        new_value[x_data->len + j] = y_data->value[j];
-    }
+    memcpy(new_value, x_data->value, x_data->len);
+    memcpy(new_value + x_data->len, y_data->value, y_data->len);
 
     return weirdstring_new(new_value, new_len);
 }
