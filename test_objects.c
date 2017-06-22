@@ -7,12 +7,15 @@
 
 #define assert_streq(a, b) assert(strcmp((a), (b)) == 0)
 
+#define START_TEST printf("\n---------- %s() ----------\n", __func__)
+
 
 int destroyed = 0;
 static void destroy_cb(void *data) { destroyed = 1; }
 
 void test_refcounts(void)
 {
+	START_TEST;
 	char data[] = "hello";
 
 	struct WeirdObject *test = weirdobject_new("WoloWolo", destroy_cb, (void *) data);
@@ -42,6 +45,8 @@ void test_refcounts(void)
 #define ITEM_COUNT 15
 void test_lists(void)
 {
+	START_TEST;
+
 	// this must contain at least ITEM_COUNT elements
 	static char *vals[] = {
 		"0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
@@ -84,6 +89,7 @@ void test_lists(void)
 
 void test_integers(void)
 {
+	START_TEST;
 	struct WeirdObject
 		*zero = weirdint_new(0, 1),
 		*a = weirdint_new(10, 1),
@@ -107,21 +113,11 @@ void test_integers(void)
 }
 
 
-char *program_name;
-
-void run(char *name, void (test)(void))
-{
-	printf("---------- %s() ----------\n", name);
-	test();
-	printf("\n");
-}
-
 int main(int argc, char **argv)
 {
-	program_name = *argv;
-	run("test_refcounts", test_refcounts);
-	run("test_lists", test_lists);
-	run("test_integers", test_integers);
+	test_refcounts();
+	test_lists();
+	test_integers();
 	printf("\nall OK\n");
 	return 0;
 }
