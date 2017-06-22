@@ -206,6 +206,8 @@ class _Parser:
                 return self.parse_return()
             if self.tokens.coming_up(1).value == 'if':
                 return self.parse_if()
+            if self.tokens.coming_up(1).value == 'function':
+                return self.parse_function_def()
 
             after_name = self.tokens.coming_up(2)
             if after_name.info == ('OP', '='):
@@ -216,26 +218,26 @@ class _Parser:
         return self.parse_expression_statement()
 
     def parse_function_def(self):
-        # main() { ... }
-        # TODO: thing() -> Int { ... }
+        # function main() { ... }
+        # function thing() returns Int { ... }
+        function_keyword = self.tokens.check_and_pop('NAME', 'function')
         name = self.parse_name()
         self.tokens.check_and_pop('OP', '(')
         arguments, junk = self._parse_comma_list(parsemethod=self._type_and_name)
 
-        before_body = self.tokens.check_and_pop('OP')
-        if before_body.value == '->':
+        if self.tokens.coming_up().info == ('NAME', 'returns'):
+            self.tokens.pop()
             returntype = self.parse_name()
-            before_body = self.tokens.check_and_pop('OP', '{')
         else:
-            assert before_body.value == '{'
             returntype = None
 
+        before_body = self.tokens.check_and_pop('OP')
         body = []
         while self.tokens.coming_up().info != ('OP', '}'):
             body.append(self.parse_statement())
         closing_brace = self.tokens.check_and_pop('OP', '}')
 
-        return FunctionDef(name.start, closing_brace.end,
+        return FunctionDef(function_keyword.start, closing_brace.end,
                            name.name, arguments, returntype, body)
 
     def parse_file(self):
@@ -245,11 +247,7 @@ class _Parser:
             except EOFError:
                 break
 
-            # FIXME: thing(stuff) on module level
-            if self.tokens.coming_up(2).info == ('OP', '('):
-                yield self.parse_function_def()
-            else:
-                yield self.parse_statement()
+            yield self.parse_statement()
 
 
 def parse(tokens):
@@ -263,7 +261,11 @@ if __name__ == '__main__':
     Int GLOBAL;
     GLOBAL = 123;
 
-    main(String s) -> Int {
+    function lel() {
+        // this does nothing
+    }
+
+    function main(String s) returns Int {
         Int a = 1;
         if a {
             print("WOLO WOLO");
