@@ -13,7 +13,7 @@
  * 		This will probably change later.
  *
  * 	size_t refcount;
- * 		Number of references to this object.
+ * 		Number of references to this object. This is 1 by default.
  *
  * 		Note that you can't use ``obj->refcount == 0`` to check if an
  * 		object has been destroyed because objects are free()d during
@@ -51,7 +51,7 @@ void weirdobject_incref(struct WeirdObject *me);
 /**
  * Decrement reference count.
  *
- * The object is destroyed if the reference count is 0.
+ * The object is destroyed if the reference count becomes 0.
  */
 void weirdobject_decref(struct WeirdObject *me);
 

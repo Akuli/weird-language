@@ -72,6 +72,7 @@ void test_lists(void)
 	for (size_t i = 0; i < ITEM_COUNT; i++) {
 		struct WeirdObject *item = weirdlist_getbyindex(list, i);
 		assert_streq((char *) item->data, vals[i]);
+		weirdobject_decref(item);
 	}
 
 	weirdobject_decref(list);

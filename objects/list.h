@@ -23,8 +23,7 @@ void weirdlist_add(struct WeirdObject *me, struct WeirdObject *item);
 /**
  * Look up an element from the list by index.
  *
- * Note that this does NOT return a new reference because having the object in
- * the list already references it.
+ * RETURNS A NEW REFERENCE.
  */
 struct WeirdObject *weirdlist_getbyindex(struct WeirdObject *me, size_t index);
 

@@ -30,6 +30,7 @@ struct WeirdObject *weirdlist_getbyindex(struct WeirdObject *me, size_t index)
 {
 	struct _WeirdList_Data *data = me->data;
 	struct WeirdObject *result = data->values[index];
+	weirdobject_incref(result);
 	return result;
 }
 
