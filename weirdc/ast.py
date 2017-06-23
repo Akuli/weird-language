@@ -40,22 +40,33 @@ class _HandyDandyTokenIterator:
         return self.pop()
 
 
-def _nodetype(name, fields):
-    return collections.namedtuple(name, ['start', 'end'] + fields)
+def _nodetype(name, fields, startend=True):
+    if startend:
+        fields = ['start', 'end'] + fields
+    namespace = {}
+    exec(f'''
+    class {name}:
+        __slots__ = {fields!r}
+
+        def __init__(self, *args):
+            assert len(args) == {len(fields)}
+            for name, value in zip({fields!r}, args):
+                setattr(self, name, value)
+    '''.lstrip(), globals())
+    return namespace[name]
 
 
-Name = _nodetype('Name', ['name'])
-Integer = _nodetype('Integer', ['value'])
-String = _nodetype('String', ['value'])
-FunctionCall = _nodetype('FunctionCall', ['function', 'arguments'])
-ExpressionStatement = _nodetype('ExpressionStatement', ['expression'])
-Declaration = _nodetype('Declaration', ['type', 'variable', 'value'])
-Assignment = _nodetype('Assignment', ['variable', 'value'])
-If = _nodetype('If', ['condition', 'body'])
-FunctionDef = _nodetype('FunctionDef', [
-    'name', 'arguments', 'returntype', 'body'])
-Return = _nodetype('Return', ['value'])
-DecRef = collections.namedtuple("DecRef", ["name"])
+_nodetype('Name', ['name'])
+_nodetype('Integer', ['value'])
+_nodetype('String', ['value'])
+_nodetype('FunctionCall', ['function', 'arguments'])
+_nodetype('ExpressionStatement', ['expression'])
+_nodetype('Declaration', ['type', 'variable', 'value'])
+_nodetype('Assignment', ['variable', 'value'])
+_nodetype('If', ['condition', 'body'])
+_nodetype('FunctionDef', ['name', 'arguments', 'returntype', 'body'])
+_nodetype('Return', ['value'])
+_nodetype("DecRef", ["name"], startend=False)
 
 
 KEYWORDS = {'return', 'if'}
