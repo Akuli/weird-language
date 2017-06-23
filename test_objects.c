@@ -22,7 +22,7 @@ void test_refcounts(void)
 
 	struct WeirdObject *test = weirdobject_new("WoloWolo", destroy_cb, (void *) data);
 	assert(test->refcount == 1);
-	assert(strcmp((char *) test->data, "hello") == 0);
+	assert_streq((char *) test->data, "hello");
 
 	weirdobject_incref(test);
 	weirdobject_incref(test);
@@ -115,6 +115,7 @@ void test_integers(void)
 }
 
 void test_strings(void) {
+    START_TEST;
     char *x_str = malloc(sizeof(char) * 3);
     char *y_str = malloc(sizeof(char) * 3);
     memcpy(x_str, "abc", 3);
@@ -137,12 +138,13 @@ void test_strings(void) {
 }
 
 
-int main(int argc, char **argv)
+typedef void (*TestFunc)(void);
+TestFunc tests[] = { test_refcounts, test_lists, test_integers, test_strings };
+
+int main(void)
 {
-	test_refcounts();
-	test_lists();
-	test_integers();
-    test_strings();
+	for (unsigned int i = 0; i < sizeof(tests)/sizeof(TestFunc); i++)
+		tests[i]();
 	printf("\nall OK\n");
 	return 0;
 }
