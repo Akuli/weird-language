@@ -8,15 +8,24 @@
 
 static void weirderr_nomem(void) { fprintf(stderr, "not enough memory\n"); exit(1); }
 
-// strdup() isn't defined in C99, this version is based on K&R :)
-static char *strdup(char *str)
-{
-	char *result = malloc(strlen(str)+1);  // sizeof(char) is always 1, +1 for '\0'
-	if (!result)
-		weirderr_nomem();
-	strcpy(result, str);
-	return result;
-}
+#if _SVID_SOURCE || _BSD_SOURCE || _XOPEN_SOURCE >= 500 || _XOPEN_SOURCE && _XOPEN_SOURCE_EXTENDED || _POSIX_C_SOURCE >= 200809L
+    /*
+     * As specified in the man page for stdup, if any of those conditions are
+     * true strdup is already defined.
+     * Re-defining it results on an error, so we check for it here and don't
+     * re-create it if we don't need to.
+     */
+#else
+    /* This mustn't be static, since it's used in do_the_input */
+    char *strdup(char *str)
+    {
+        char *result = malloc(strlen(str)+1);  // sizeof(char) is always 1, +1 for '\0'
+        if (!result)
+            weirderr_nomem();
+        strcpy(result, str);
+        return result;
+    }
+#endif
 
 
 struct WeirdObject *

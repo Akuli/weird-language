@@ -1,11 +1,9 @@
-main() -> Int {
+function main() returns Int {
 	print("Enter something: ");
-	Text word = input();
+	String word = input();
 
 	// todo: string concat
 	print("You entered ");
 	print(word);
 	print(".\n");
-
-	return 0;
 }

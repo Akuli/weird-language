@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import collections
 
-from . import ast
+from . import ast, c_output
 
 
 def creates_scope(node, *, classes=(ast.FunctionDef, ast.If)):
@@ -9,8 +9,9 @@ def creates_scope(node, *, classes=(ast.FunctionDef, ast.If)):
 
 
 def is_weird_object(type_):
-    # TODO: Check that the type actually is a WeirdObject.
-    return True
+    if isinstance(type_, ast.Name):
+        type_ = type_.name
+    return type_ in c_output.OBJECTS
 
 
 def modify_body(node, new_body):

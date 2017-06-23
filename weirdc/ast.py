@@ -113,7 +113,8 @@ class _Parser:
         return (elements, last_token)
 
     def parse_expression(self):
-        next_kind = self.tokens.coming_up().kind
+        coming_up = self.tokens.coming_up()
+        next_kind = coming_up.kind
         if next_kind == 'NAME':
             # hello
             result = self.parse_name()
@@ -124,7 +125,7 @@ class _Parser:
             # 123
             result = self.parse_integer()
         else:
-            assert False, self.tokens.coming_up()
+            raise ValueError(f"Invalid token: {coming_up!r}")
 
         # check for function calls, this is a while loop to allow nested
         # function calls like thing()()()
