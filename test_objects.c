@@ -134,12 +134,7 @@ void test_strings(void) {
 
 
 typedef void (*TestFunc)(void);
-TestFunc tests[] = {
-	test_refcounts,
-	//test_lists,
-	test_integers,
-	test_strings
-};
+TestFunc tests[] = { test_refcounts, test_lists, test_integers, test_strings };
 
 int main(void)
 {

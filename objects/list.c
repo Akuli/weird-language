@@ -14,6 +14,7 @@ static void destructor(void *voiddata)
 	struct _WeirdList_Data *data = voiddata;
 	for (size_t i = 0; i < data->length; i++)
 		weirdobject_decref(data->values[i]);
+	free(data->values);
 	free(data);
 }
 
