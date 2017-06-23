@@ -16,12 +16,15 @@ from weirdc import ast
 PRELOAD = r"""
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 __INCLUDES__
 
 static void do_the_print(struct WeirdObject *message)
 {
-    printf("%s", weirdstring_to_cstring(message));
+    char *s = weirdstring_to_cstring(message);
+    printf("%s", s);
+    free(s);
 }
 
 
@@ -115,7 +118,6 @@ def unparse(node):
             # specially.
             # TODO: Handle returns, so WeirdInt objects are converted to C int
             # primitives.
-            assert node.returntype == "Int", "main return type must be int."
             return "int main(void) { %s }" % (''.join(map(unparse, node.body)))
         else:
             return '%s %s(void) { %s }' % (
