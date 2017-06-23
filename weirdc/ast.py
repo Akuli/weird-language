@@ -53,7 +53,6 @@ def _nodetype(name, fields, startend=True):
             for name, value in zip({fields!r}, args):
                 setattr(self, name, value)
     '''.lstrip(), globals())
-    return namespace[name]
 
 
 _nodetype('Name', ['name'])
