@@ -126,4 +126,7 @@ def unparse(node):
                 ''.join(map(unparse, node.body))
             )
 
+    if isinstance(node, ast.DecRef):
+        return f"weirdobject_decref({node.name});"
+
     raise TypeError(f"don't know how to unparse {node!r}")

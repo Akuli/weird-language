@@ -7,7 +7,7 @@ import tempfile
 import os
 import glob
 
-from weirdc import tokenizer, ast, c_output
+from weirdc import tokenizer, ast, c_output, scoping
 
 PROMPT = ("{} already exists. "
           "Do you want to overwrite it? [Y/n] ")
@@ -35,7 +35,7 @@ def main():
 
     print("Generating C code...")
     tokens = tokenizer.tokenize(code)
-    node_list = ast.parse(tokens)
+    node_list = scoping.scope_ast(ast.parse(tokens))
     c_code = c_output.PRELOAD + ''.join(map(c_output.unparse, node_list))
 
     if args.no_compile:
