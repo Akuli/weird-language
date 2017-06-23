@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "object.h"
-#include "string.h"
+#include "weirdstring.h"
 
 static void weirdstring_free(void *data_ptr) {
     struct _WeirdString_Data *data = (struct _WeirdString_Data*) data_ptr;

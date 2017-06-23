@@ -5,11 +5,12 @@ import subprocess
 import sys
 import tempfile
 import os
+import glob
 
 from weirdc import tokenizer, ast, c_output
 
 PROMPT = ("{} already exists. "
-         "Do you want to overwrite it? [Y/n] ")
+          "Do you want to overwrite it? [Y/n] ")
 
 
 def main():
@@ -24,7 +25,7 @@ def main():
         "--no-compile", action="store_true",
         help="If specified, saves the C code to a file instead of compiling.")
     parser.add_argument(
-        '--cc', metavar='COMMAND', default='gcc {cfile} -o {outfile}',
+        '--cc', metavar='COMMAND', default='gcc {cfile} -Iobjects -o {outfile}',
         help=("c compiler command and options with {cfile} and {outfile} "
               "substituted, defaults to '%(default)s'"))
     args = parser.parse_args()
@@ -58,9 +59,18 @@ def main():
             cfile.write(c_code)
             cfile.flush()
 
-            compile_command = [
-                part.format(cfile=cfile.name, outfile=args.outfile)
-                for part in shlex.split(args.cc)]
+            compile_command = []
+
+            for part in shlex.split(args.cc):
+                if "{cfile}" in part:
+                    # We want to add the object C files to the compile command
+                    # with the regular C file. This does not really matter,
+                    # but is the easiest way to do this.
+                    # TODO: However, this feels very hack-ish and I'm sure
+                    # there's a better and more beautiful way.
+                    compile_command.extend(glob.glob("objects/*.c"))
+                part = part.format(cfile=cfile.name, outfile=args.outfile)
+                compile_command.append(part)
             print(' '.join(map(shlex.quote, compile_command)))
             statuscode = subprocess.call(compile_command)
 
