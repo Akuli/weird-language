@@ -1,14 +1,16 @@
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
 #include "objects/object.h"
 #include "objects/list.h"
 #include "objects/integer.h"
+#include "objects/string.h"
 
 #define assert_streq(a, b) assert(strcmp((a), (b)) == 0)
 
 #define START_TEST printf("\n---------- %s() ----------\n", __func__)
-
 
 int destroyed = 0;
 static void destroy_cb(void *data) { destroyed = 1; }
@@ -112,9 +114,32 @@ void test_integers(void)
 	weirdobject_decref(bc);
 }
 
+void test_strings(void) {
+    START_TEST;
+    char *x_str = malloc(sizeof(char) * 3);
+    char *y_str = malloc(sizeof(char) * 3);
+    memcpy(x_str, "abc", 3);
+    memcpy(y_str, "def", 3);
+
+    struct WeirdObject *x = weirdstring_new(x_str, 3);
+    struct WeirdObject *y = weirdstring_new(y_str, 3);
+    struct WeirdObject *z = weirdstring_concat(x, y);
+
+    struct StringData *z_data = z->data;
+    assert(z_data->len == 6);
+
+    char *z_cstr = weirdstring_to_cstring(z);
+    assert_streq(z_cstr, "abcdef");
+    free(z_cstr);
+
+    weirdobject_decref(x);
+    weirdobject_decref(y);
+    weirdobject_decref(z);
+}
+
 
 typedef void (*TestFunc)(void);
-TestFunc tests[] = { test_refcounts, test_lists, test_integers };
+TestFunc tests[] = { test_refcounts, test_lists, test_integers, test_strings };
 
 int main(void)
 {
