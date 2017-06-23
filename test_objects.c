@@ -125,7 +125,7 @@ void test_strings(void) {
     struct WeirdObject *y = weirdstring_new(y_str, 3);
     struct WeirdObject *z = weirdstring_concat(x, y);
 
-    struct StringData *z_data = z->data;
+    struct _WeirdString_Data *z_data = z->data;
     assert(z_data->len == 6);
 
     char *z_cstr = weirdstring_to_cstring(z);
