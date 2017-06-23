@@ -1,4 +1,4 @@
-main() -> Int {
+function main() returns Int {
 	print("Enter something: ");
 	Text word = input();
 
