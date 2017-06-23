@@ -20,7 +20,7 @@ void test_refcounts(void)
 
 	struct WeirdObject *test = weirdobject_new("WoloWolo", destroy_cb, (void *) data);
 	assert(test->refcount == 1);
-	assert(strcmp((char *) test->data, "hello") == 0);
+	assert_streq((char *) test->data, "hello");
 
 	weirdobject_incref(test);
 	weirdobject_incref(test);
@@ -113,11 +113,13 @@ void test_integers(void)
 }
 
 
-int main(int argc, char **argv)
+typedef void (*TestFunc)(void);
+TestFunc tests[] = { test_refcounts, test_lists, test_integers };
+
+int main(void)
 {
-	test_refcounts();
-	test_lists();
-	test_integers();
+	for (unsigned int i = 0; i < sizeof(tests)/sizeof(TestFunc); i++)
+		tests[i]();
 	printf("\nall OK\n");
 	return 0;
 }
