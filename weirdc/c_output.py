@@ -30,7 +30,7 @@ static void do_the_print(struct WeirdObject *message)
 
 #define MAXLEN 1000
 
-static char *do_the_input()
+static struct WeirdObject *do_the_input()
 {
     char c, result[MAXLEN+1];    /* 1 is the 0 at the end */
     int i;
@@ -41,11 +41,10 @@ static char *do_the_input()
             break;
         result[i] = c;
     }
-    result[i] = 0;
 
-    /* this sucks because this isn't freed anywhere :(
-       like david beazley says: call it a prototype */
-    return strdup(result);
+    /* at the end of the loop, i is equal to the length of the string. */
+    /* this is automagically free-ed since it's a WeirdObject */
+    return weirdstring_new(result, i);
 }
 """.replace("__INCLUDES__", 
             "\n".join(f'#include "{os.path.basename(header)}"'
@@ -85,6 +84,8 @@ def unparse(node):
         return str(node.value)
     if isinstance(node, ast.String):
         # TODO: escaping and other stuff
+        # XXX: String literals that aren't assigned to a variable are never
+        # freed.
         return OBJECTS["String"](node.value)
     if isinstance(node, ast.ExpressionStatement):
         return unparse(node.expression) + ';'
