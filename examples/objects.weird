@@ -1,4 +1,5 @@
 function make_string() returns String {
+    String junk = "This will be freed.";
     return "lolwhut";
 }
 
