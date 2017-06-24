@@ -13,6 +13,7 @@ from weirdc import ast
 
 # TODO: Do not utilize __INCLUDES__, instead use `str.format` or something like
 # that.
+# TODO: Investigate the warnings about `do_the_print` in Valgrind.
 PRELOAD = r"""
 #include <stdio.h>
 #include <string.h>
