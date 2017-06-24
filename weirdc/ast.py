@@ -52,6 +52,11 @@ def _nodetype(name, fields, startend=True):
             assert len(args) == {len(fields)}
             for name, value in zip({fields!r}, args):
                 setattr(self, name, value)
+
+        def __repr__(self):
+            return "{name}({{}})".format(
+                ", ".join(key + "=" + repr(getattr(self, key))
+                          for key in {fields!r}))
     '''.lstrip(), globals())
 
 
