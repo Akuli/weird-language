@@ -25,7 +25,7 @@ def main():
         "--no-compile", action="store_true",
         help="If specified, saves the C code to a file instead of compiling.")
     parser.add_argument(
-        '--cc', metavar='COMMAND', default='gcc {cfile} -Iobjects -o {outfile}',
+        '--cc', metavar='COMMAND', default='gcc {cfile} -std=c99 -Iobjects -o {outfile}',
         help=("c compiler command and options with {cfile} and {outfile} "
               "substituted, defaults to '%(default)s'"))
     args = parser.parse_args()
