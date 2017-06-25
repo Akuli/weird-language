@@ -63,12 +63,8 @@ def main():
 
             for part in shlex.split(args.cc):
                 if "{cfile}" in part:
-                    # We want to add the object C files to the compile command
-                    # with the regular C file. This does not really matter,
-                    # but is the easiest way to do this.
-                    # TODO: However, this feels very hack-ish and I'm sure
-                    # there's a better and more beautiful way.
-                    compile_command.extend(glob.glob("objects/*.c"))
+                    # TODO: is there a nicer way to do this?
+                    compile_command.extend(glob.glob("objects/*.o"))
                 part = part.format(cfile=cfile.name, outfile=args.outfile)
                 compile_command.append(part)
             print(' '.join(map(shlex.quote, compile_command)))
