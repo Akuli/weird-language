@@ -54,9 +54,10 @@ def _nodetype(name, fields, startend=True):
                 setattr(self, name, value)
 
         def __repr__(self):
-            return "{name}({{}})".format(
+            return "{name}(%s)" % (
                 ", ".join(key + "=" + repr(getattr(self, key))
-                          for key in {fields!r}))
+                          for key in {fields!r}
+                          if key not in ['start', 'end']))
     '''.lstrip(), globals())
 
 
