@@ -28,33 +28,31 @@ def main():
         '--cc', metavar='COMMAND', default='gcc {cfile} -std=c99 -Iobjects -o {outfile}',
         help=("c compiler command and options with {cfile} and {outfile} "
               "substituted, defaults to '%(default)s'"))
+    parser.add_argument(
+        '-v', '--verbose', action='store_true',
+        help="produce more output")
     args = parser.parse_args()
 
+    def debug(msg):
+        if args.verbose:
+            print(msg)
+
+    debug("Reading '%s'..." % args.infile.name)
     with args.infile as file:
         code = file.read()
 
-    print("Generating C code...")
+    debug("Generating C code...")
     tokens = tokenizer.tokenize(code)
     node_list = scoping.scope_ast(ast.parse(tokens))
-    c_code = c_output.PRELOAD + ''.join(map(c_output.unparse, node_list))
+    c_code = c_output.make_c_code(node_list)
 
     if args.no_compile:
-        # If we don't call basename, we get all of the path too. this way we
-        # save to the current directory.
-        basename = os.path.basename(os.path.splitext(args.infile.name)[0])
-        filename = basename + ".c"
-
-        if os.path.exists(filename):
-            confirmation = input(PROMPT.format(filename))
-            if confirmation and confirmation.lower() != "y":
-                print("Okay, exiting.")
-                sys.exit(1)
-
-        print("Saving C code to", filename)
-        with open(filename, "w") as file:
+        debug("Saving C code to '%s'..." % args.outfile)
+        with open(args.outfile, 'w') as file:
             file.write(c_code)
+        print("Generating the C code succeeded.")
     else:
-        print("Compiling...")
+        debug("Compiling...")
         with tempfile.NamedTemporaryFile(mode='w', suffix='.c') as cfile:
             cfile.write(c_code)
             cfile.flush()

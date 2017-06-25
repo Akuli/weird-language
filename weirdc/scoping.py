@@ -1,16 +1,8 @@
-#!/usr/bin/env python3
 import collections
+import itertools
 import random
 
 from . import ast
-
-
-def creates_scope(node, *, classes=(ast.FunctionDef, ast.If)):
-    return isinstance(node, classes)
-
-
-def is_literal(node, *, classes=(ast.String, ast.Integer)):
-    return isinstance(node, classes)
 
 
 def scope_ast(nodes, scopes=None, return_types=None):
@@ -24,9 +16,10 @@ def scope_ast(nodes, scopes=None, return_types=None):
     scoped_nodes = []
     returned_names = {}
 
+    _varnames = ('literal%d' % i for i in itertools.count(1))
+
     def _create_variable(value, var_type):
-        rand = "".join(filter(str.isdigit, str(random.random())))
-        variable = "literal" + rand
+        variable = next(_varnames)
 
         assert variable not in scopes
         scopes[variable] = var_type
@@ -58,9 +51,12 @@ def scope_ast(nodes, scopes=None, return_types=None):
             value.value = _store_literals(value.value)
             returned_names[value.value.name] = len(scoped_nodes)
             return value
-        elif not is_literal(value):
+        elif not isinstance(value, (ast.String, ast.Integer)):
+            print('*** NOT LITERAL:' ,value)
+            # it's not a literal
             return value
 
+        print('*** WOLO WOLO', value)
         name = _create_variable(
             value, ast.Name(None, None, value.__class__.__name__)
         )
@@ -82,7 +78,8 @@ def scope_ast(nodes, scopes=None, return_types=None):
             return_types[node.name] = node.returntype
 
         node = _store_literals(node)
-        if creates_scope(node):
+        if isinstance(node, (ast.FunctionDef, ast.If)):
+            # it creates a new scope
             node.body[:] = scope_ast(node.body, scopes.new_child())
         scoped_nodes.append(node)
 
