@@ -40,38 +40,54 @@ class _HandyDandyTokenIterator:
         return self.pop()
 
 
-def _nodetype(name, fields, startend=True):
-    if startend:
-        fields = ['start', 'end'] + fields
-    namespace = {}
-    exec(f'''
-    class {name}:
-        __slots__ = {fields!r}
+def _nodetype(name, fields):
 
-        def __init__(self, *args):
-            assert len(args) == {len(fields)}
-            for name, value in zip({fields!r}, args):
-                setattr(self, name, value)
+    # this is equivalent enough to doing this:
+    #    class <name>:
+    #        # only allow these attributes
+    #        __slots__ = <fields> + ['start', 'end']
+    #
+    #        def __init__(self, <fields>, start=None, end=None):
+    #            self.start = start
+    #            self.end = end
+    #            for each field:
+    #                self.<field> = <field>
+    #
+    #        # just for debugging
+    #        def __repr__(self):
+    #            # this doesn't show start and end, most of the time i
+    #            # don't care about them
+    #            return '<name>(<values of the fields>)'
+    def dunder_init(self, *args, start=None, end=None):
+        self.start = start
+        self.end = end
+        assert len(fields) == len(args)
+        for name, value in zip(fields, args):
+            setattr(self, name, value)
 
-        def __repr__(self):
-            return "{name}(%s)" % (
-                ", ".join(key + "=" + repr(getattr(self, key))
-                          for key in {fields!r}
-                          if key not in ['start', 'end']))
-    '''.lstrip(), globals())
+    def dunder_repr(self):
+        parts = [repr(getattr(self, name)) for name in fields]
+        return name + '(' + ', '.join(parts) + ')'
+
+    return type(name, (), {
+        '__slots__': fields + ['start', 'end'],
+        '__init__': dunder_init,
+        '__repr__': dunder_repr,
+    })
 
 
-_nodetype('Name', ['name'])
-_nodetype('Integer', ['value'])
-_nodetype('String', ['value'])
-_nodetype('FunctionCall', ['function', 'arguments'])
-_nodetype('ExpressionStatement', ['expression'])
-_nodetype('Declaration', ['type', 'variable', 'value'])
-_nodetype('Assignment', ['variable', 'value'])
-_nodetype('If', ['condition', 'body'])
-_nodetype('FunctionDef', ['name', 'arguments', 'returntype', 'body'])
-_nodetype('Return', ['value'])
-_nodetype("DecRef", ["name"], startend=False)
+Name = _nodetype('Name', ['name'])
+Integer = _nodetype('Integer', ['value'])
+String = _nodetype('String', ['value'])
+FunctionCall = _nodetype('FunctionCall', ['function', 'arguments'])
+ExpressionStatement = _nodetype('ExpressionStatement', ['expression'])
+Declaration = _nodetype('Declaration', ['type', 'variable', 'value'])
+Assignment = _nodetype('Assignment', ['variable', 'value'])
+If = _nodetype('If', ['condition', 'body'])
+FunctionDef = _nodetype('FunctionDef', 
+                        ['name', 'arguments', 'returntype', 'body'])
+Return = _nodetype('Return', ['value'])
+DecRef = _nodetype('DecRef', ['name'])
 
 
 KEYWORDS = {'return', 'if'}
@@ -87,18 +103,18 @@ class _Parser:
         token = self.tokens.check_and_pop('NAME')
         if check_for_keywords:
             assert token.value not in KEYWORDS, token.value
-        return Name(token.start, token.end, token.value)
+        return Name(token.value, start=token.start, end=token.end)
 
     def parse_integer(self):
         # 3735928559
         token = self.tokens.check_and_pop('INTEGER')
-        return Integer(token.start, token.end, int(token.value))
+        return Integer(int(token.value), start=token.start, end=token.end)
 
     def parse_string(self):
         # "hello world"
         # TODO: "hello \"world\" ${some code}"
         token = self.tokens.check_and_pop('STRING')
-        return String(token.start, token.end, token.value[1:-1])
+        return String(token.value[1:-1], start=token.start, end=token.end)
 
     def _parse_comma_list(self, stop=')', parsemethod=None):
         # )
@@ -152,8 +168,8 @@ class _Parser:
 
             openparen = self.tokens.check_and_pop('OP', '(')
             arguments, last_token = self._parse_comma_list()
-            result = FunctionCall(result.start, last_token.end,
-                                  result, arguments)
+            result = FunctionCall(
+                result, arguments, start=result.start, end=last_token.end)
 
         return result
 
@@ -163,7 +179,7 @@ class _Parser:
         # expression;
         value = self.parse_expression()
         semicolon = self.tokens.check_and_pop('OP', ';')
-        return ExpressionStatement(value.start, semicolon.end, value)
+        return ExpressionStatement(value, start=value.start, end=semicolon.end)
 
     def assignment(self):
         # thing = value
@@ -172,7 +188,8 @@ class _Parser:
         self.tokens.check_and_pop('OP', '=')
         value = self.parse_expression()
         semicolon = self.tokens.check_and_pop('OP', ';')
-        return Assignment(variable.start, semicolon.end, variable, value)
+        return Assignment(variable, value,
+                          start=variable.start, end=semicolon.end)
 
     def parse_if(self):
         the_if = self.tokens.check_and_pop('NAME', 'if')
@@ -184,13 +201,14 @@ class _Parser:
             body.append(self.parse_statement())
 
         closing_brace = self.tokens.check_and_pop('OP', '}')
-        return If(the_if.start, closing_brace.end, condition, body)
+        return If(condition, body, start=the_if.start, end=closing_brace.end)
 
     def _type_and_name(self):
-        # Int a
+        # Int a;
         # return (typenode, name_string)
         typenode = self.parse_name()
         name = self.parse_name()
+        print(name)
         return (typenode, name.name)
 
     def parse_declaration(self):
@@ -206,14 +224,14 @@ class _Parser:
         else:
             initial_value = self.parse_expression()
             semicolon = self.tokens.check_and_pop('OP', ';')
-        return Declaration(datatype.start, third_thing.end,
-                           datatype, variable_name, initial_value)
+        return Declaration(datatype, variable_name, initial_value,
+                           start=datatype.start, end=third_thing.end)
 
     def parse_return(self):
         the_return = self.tokens.check_and_pop('NAME', 'return')
         value = self.parse_expression()
         semicolon = self.tokens.check_and_pop('OP', ';')
-        return Return(the_return.start, semicolon.end, value)
+        return Return(value, start=the_return.start, end=semicolon.end)
 
     def parse_statement(self):
         # coming_up(1) and coming_up(2) work because there's always a
@@ -254,8 +272,8 @@ class _Parser:
             body.append(self.parse_statement())
         closing_brace = self.tokens.check_and_pop('OP', '}')
 
-        return FunctionDef(function_keyword.start, closing_brace.end,
-                           name.name, arguments, returntype, body)
+        return FunctionDef(name.name, arguments, returntype, body,
+                           start=function_keyword.start, end=closing_brace.end)
 
     def parse_file(self):
         while True:
