@@ -40,37 +40,47 @@ class _HandyDandyTokenIterator:
         return self.pop()
 
 
-def _nodetype(name, fields):
-
+# the optional fields will be filled out later
+# TODO: add the name of the file that does this to this comment
+# (i'm not sure about the name yet)
+def _nodetype(name, required_fields, optional_fields=()):
     # this is equivalent enough to doing this:
     #    class <name>:
     #        # only allow these attributes
-    #        __slots__ = <fields> + ['start', 'end']
+    #        __slots__ = required_fields + optional_fields + ['start', 'end']
     #
     #        def __init__(self, <fields>, start=None, end=None):
     #            self.start = start
     #            self.end = end
-    #            for each field:
+    #            for each required field:
     #                self.<field> = <field>
     #
     #        # just for debugging
     #        def __repr__(self):
-    #            # this doesn't show start and end, most of the time i
-    #            # don't care about them
-    #            return '<name>(<values of the fields>)'
+    #            # this doesn't show start, end and other optional things, most
+    #            # of the time i don't care about them
+    #            return '<name>(<values of the required fields>)'
+    #
+    #        def error(self):
+    #            you get the idea, i'm not going to copy/paste the code here
     def dunder_init(self, *args, start=None, end=None):
         self.start = start
         self.end = end
-        assert len(fields) == len(args)
-        for name, value in zip(fields, args):
+        assert len(required_fields) == len(args)
+        for name, value in zip(required_fields, args):
             setattr(self, name, value)
+        for name in optional_fields:
+            setattr(self, name, None)
 
     def dunder_repr(self):
-        parts = [repr(getattr(self, name)) for name in fields]
-        return name + '(' + ', '.join(parts) + ')'
+        parts = [repr(getattr(self, name)) for name in required_fields]
+        return 'ast.' + name + '(' + ', '.join(parts) + ')'
 
+    # slots is defined separately because pep8 weird indent rules and
+    # max line length
+    slots = required_fields + list(optional_fields) + ['start', 'end']
     return type(name, (), {
-        '__slots__': fields + ['start', 'end'],
+        '__slots__': slots,
         '__init__': dunder_init,
         '__repr__': dunder_repr,
     })
@@ -79,13 +89,12 @@ def _nodetype(name, fields):
 Name = _nodetype('Name', ['name'])
 Integer = _nodetype('Integer', ['value'])
 String = _nodetype('String', ['value'])
-FunctionCall = _nodetype('FunctionCall', ['function', 'arguments'])
+FunctionCall = _nodetype('FunctionCall', ['function', 'args'], ['returntype'])
 ExpressionStatement = _nodetype('ExpressionStatement', ['expression'])
-Declaration = _nodetype('Declaration', ['type', 'variable', 'value'])
-Assignment = _nodetype('Assignment', ['variable', 'value'])
+Declaration = _nodetype('Declaration', ['type', 'name'])
+Assignment = _nodetype('Assignment', ['target', 'value'])
 If = _nodetype('If', ['condition', 'body'])
-FunctionDef = _nodetype('FunctionDef', 
-                        ['name', 'arguments', 'returntype', 'body'])
+FunctionDef = _nodetype('FunctionDef', ['name', 'args', 'returntype', 'body'])
 Return = _nodetype('Return', ['value'])
 DecRef = _nodetype('DecRef', ['name'])
 
@@ -93,6 +102,8 @@ DecRef = _nodetype('DecRef', ['name'])
 KEYWORDS = {'return', 'if'}
 
 
+# FIXME: this should produce similar (overlapping) nodes for "Int a = 1;"
+# and "Int a; a = 1;" because it's simpler and checker.py relies on it
 class _Parser:
 
     def __init__(self, tokens):
@@ -167,9 +178,9 @@ class _Parser:
                 break
 
             openparen = self.tokens.check_and_pop('OP', '(')
-            arguments, last_token = self._parse_comma_list()
+            args, last_token = self._parse_comma_list()
             result = FunctionCall(
-                result, arguments, start=result.start, end=last_token.end)
+                result, args, start=result.start, end=last_token.end)
 
         return result
 
@@ -184,12 +195,11 @@ class _Parser:
     def assignment(self):
         # thing = value
         # TODO: thing's stuff = value
-        variable = self.parse_name()
+        target = self.parse_name()
         self.tokens.check_and_pop('OP', '=')
         value = self.parse_expression()
         semicolon = self.tokens.check_and_pop('OP', ';')
-        return Assignment(variable, value,
-                          start=variable.start, end=semicolon.end)
+        return Assignment(target, value, start=target.start, end=semicolon.end)
 
     def parse_if(self):
         the_if = self.tokens.check_and_pop('NAME', 'if')
@@ -198,34 +208,42 @@ class _Parser:
 
         body = []
         while self.tokens.coming_up().info != ('OP', '}'):
-            body.append(self.parse_statement())
+            body.extend(self.parse_statement())
 
         closing_brace = self.tokens.check_and_pop('OP', '}')
         return If(condition, body, start=the_if.start, end=closing_brace.end)
 
     def _type_and_name(self):
         # Int a;
-        # return (typenode, name_string)
-        typenode = self.parse_name()
+        # this returns (typenode, name_string)
+        typenode = self.parse_name()   # TODO: module's Thing
         name = self.parse_name()
-        print(name)
         return (typenode, name.name)
 
-    def parse_declaration(self):
+    def parse_declaration(self) -> list:
         # Int thing;
-        # Int thing = expression;
+        # Int thing = expr;    // equivalent to "Int thing; thing = expr;" [*]
         # TODO: module's Thingy thing;
-        datatype, variable_name = self._type_and_name()
+        #
+        # [*] produces overlapping Declaration and Assignment nodes,
+        #     that's why this returns a list of nodes
+        datatype = self.parse_name()   # TODO: module's Thing
+        variable = self.parse_name()
 
         third_thing = self.tokens.check_and_pop('OP')
         if third_thing.value == ';':
-            semicolon = third_thing
-            initial_value = None
-        else:
-            initial_value = self.parse_expression()
-            semicolon = self.tokens.check_and_pop('OP', ';')
-        return Declaration(datatype, variable_name, initial_value,
-                           start=datatype.start, end=third_thing.end)
+            return [Declaration(datatype, variable.name,
+                                start=datatype.start, end=third_thing.end)]
+
+        assert third_thing.value == '='
+        initial_value = self.parse_expression()
+        semicolon = self.tokens.check_and_pop('OP', ';')
+        return [
+            Declaration(datatype, variable.name,
+                        start=datatype.start, end=variable.end),
+            Assignment(variable, initial_value,
+                       start=variable.start, end=semicolon.end),
+        ]
 
     def parse_return(self):
         the_return = self.tokens.check_and_pop('NAME', 'return')
@@ -233,24 +251,24 @@ class _Parser:
         semicolon = self.tokens.check_and_pop('OP', ';')
         return Return(value, start=the_return.start, end=semicolon.end)
 
-    def parse_statement(self):
+    def parse_statement(self) -> list:
         # coming_up(1) and coming_up(2) work because there's always a
         # semicolon and at least something before it
         if self.tokens.coming_up(1).kind == 'NAME':
             if self.tokens.coming_up(1).value == 'return':
-                return self.parse_return()
+                return [self.parse_return()]
             if self.tokens.coming_up(1).value == 'if':
-                return self.parse_if()
+                return [self.parse_if()]
             if self.tokens.coming_up(1).value == 'function':
-                return self.parse_function_def()
+                return [self.parse_function_def()]
 
             after_name = self.tokens.coming_up(2)
             if after_name.info == ('OP', '='):
-                return self.assignment()
+                return [self.assignment()]
             if after_name.kind == 'NAME':
                 return self.parse_declaration()
 
-        return self.parse_expression_statement()
+        return [self.parse_expression_statement()]
 
     def parse_function_def(self):
         # function main() { ... }
@@ -258,7 +276,7 @@ class _Parser:
         function_keyword = self.tokens.check_and_pop('NAME', 'function')
         name = self.parse_name()
         self.tokens.check_and_pop('OP', '(')
-        arguments, junk = self._parse_comma_list(parsemethod=self._type_and_name)
+        args, junk = self._parse_comma_list(parsemethod=self._type_and_name)
 
         if self.tokens.coming_up().info == ('NAME', 'returns'):
             self.tokens.pop()
@@ -269,10 +287,10 @@ class _Parser:
         before_body = self.tokens.check_and_pop('OP')
         body = []
         while self.tokens.coming_up().info != ('OP', '}'):
-            body.append(self.parse_statement())
+            body.extend(self.parse_statement())
         closing_brace = self.tokens.check_and_pop('OP', '}')
 
-        return FunctionDef(name.name, arguments, returntype, body,
+        return FunctionDef(name.name, args, returntype, body,
                            start=function_keyword.start, end=closing_brace.end)
 
     def parse_file(self):
@@ -282,7 +300,7 @@ class _Parser:
             except EOFError:
                 break
 
-            yield self.parse_statement()
+            yield from self.parse_statement()
 
 
 def parse(tokens):
