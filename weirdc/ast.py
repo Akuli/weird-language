@@ -247,16 +247,16 @@ class _Parser:
         # this returns (typenode, name_string)
         typenode = self.parse_name()   # TODO: module's Thing
         name = self.parse_name()
-        return (typenode, name.name)
+        return (typenode, name)
 
     # RETURNS AN ITERABLE
     def parse_declaration(self):
         # Int thing;
-        # Int thing = expr;    // equivalent to "Int thing; thing = expr;" [*]
-        # TODO: module's Thingy thing;
+        # Int thing = expr;
+        # TODO: module.Thingy thing;
         #
-        # [*] produces overlapping Declaration and Assignment nodes,
-        #     that's why this returns a list of nodes
+        # "Int thing = expr;" produces overlapping Declaration and
+        # Assignment nodes, that's why this returns a list of nodes
         datatype = self.parse_name()   # TODO: module's Thing
         variable = self.parse_name()
 
