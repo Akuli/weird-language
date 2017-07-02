@@ -11,7 +11,7 @@ import weirdc
 # https://docs.python.org/3/library/re.html#writing-a-tokenizer
 TOKEN_SPEC = [
     ('INTEGER', r'\d+'),                   # 123
-    ('OP', r"==|[=(){}\[\];,=]"),          # == = ( ) { } [ ] ; ,
+    ('OP', r"[=(){}\[\];,.]"),             # = ( ) { } [ ] ; , .
     ('NAME', r'[^\W\d]\w*'),               # message123
     ('STRING', r'"[^"\n]*"'),              # "hello world"
     ('IGNORE', r'\s+|//[^\n]*|/\*.*\*/'),  # whitespace and comments
@@ -34,8 +34,10 @@ class Token(collections.namedtuple('Token', 'kind value location')):
         >>> from weirdc import Location
         >>> Token('OP', ')', Location(1, 2, 3)).startswith(['OP', ')'])
         True
+        >>> Token('OP', ')', Location(1, 2, 3)).startswith('wolololo')
+        False
         """
-        if len(self) < len(other):
+        if len(other) > len(self):
             return False
         return all(a == b for a, b in zip(self, other))
 
@@ -69,7 +71,7 @@ def tokenize(code):
         yield Token(kind, value, location)
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':    # pragma: no cover
     while True:
         for token in tokenize(input('> ')):
             print(token)
