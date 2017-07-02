@@ -2,3 +2,6 @@ __pycache__/
 a.out
 *.o
 test_objects
+.cache/
+.coverage
+htmlcov/
