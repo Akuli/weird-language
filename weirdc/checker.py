@@ -4,138 +4,38 @@ This takes AST nodes and outputs its own nodes.
 """
 
 import collections
+import functools
 import itertools
 import string as string_module
 
-from weirdc import ast
+from weirdc import CompileError, ast, utils
 
 
-def _miniclass(name, fields, *, inherits=None, default_attrs=None):
-    # __slots__ can be a list, but mutating it afterwards doesn't change
-    # anything so it just confuses stuff
-    fields = tuple(fields)
-    if default_attrs is None:
-        default_attrs = {}
-
-    if inherits is None:
-        all_fields = fields
-    else:
-        all_fields = tuple(inherits.__slots__) + fields
-
-    def dunder_init(self, *args, **kwargs):
-        assert len(args) == len(all_fields)
-        assert set(kwargs.keys()).issubset(default_attrs.keys())
-
-        for name, value in zip(all_fields, args):
-            setattr(self, name, value)
-        for name, value in collections.ChainMap(kwargs, default_attrs).items():
-            setattr(self, name, value)
-
-    def dunder_repr(self):
-        values = [repr(getattr(self, name)) for name in all_fields]
-        this_module_name = __name__.split('.')[-1]
-        return '%s.%s(%s)' % (this_module_name, name, ', '.join(values))
-
-    def dunder_eq(self, other):
-        if not isinstance(other, type(self)):
-            return NotImplemented
-
-        for name in all_fields:
-            if getattr(self, name) != getattr(other, name):
-                return False
-        return True
-
-    return type(name, (() if inherits is None else (inherits,)), {
-        '__slots__': fields + tuple(default_attrs),
-        '__init__': dunder_init,
-        '__repr__': dunder_repr,
-        '__eq__': dunder_eq,
-        # __ne__ works automagically
-    })
-
+_node = functools.partial(utils.miniclass, __name__)
 
 # if the type attribute is None, it means that the object is a class
-Type = _miniclass('Type', ['name'])
+Type = _node('Type', ['name'])
 Type.type = None
 
 # "Int a = 1;" doesn't actually track the value of a, it just makes a an
 # Instance(INT_TYPE)
-Instance = _miniclass('Instance', ['type'])
+Instance = _node('Instance', ['type'])
 
 # "hello", 123
-Literal = _miniclass('Literal', ['constructor_args'], inherits=Instance)
+Literal = _node('Literal', ['constructor_args'], inherit=Instance)
 
-FunctionType = _miniclass(
-    'FunctionType', ['argtypes', 'returntype'], inherits=Type)
+# a FunctionType object represents argument types and return values
+# note that FunctionType objects with same argument and return types
+# compare unequal (see weirdc._miniclass)
+FunctionType = _node(
+    'FunctionType', ['argtypes', 'returntype'], inherit=Type)
 
 INT_TYPE = Type('Int')
 STRING_TYPE = Type('String')     # TODO: rename to just Str?
 
-Variable = _miniclass(
-    'Variable', ['id', 'value', 'definition_start', 'definition_end'],
+Variable = _node(
+    'Variable', ['id', 'value', 'defined_location'],
     default_attrs={'initialized': False, 'used_somewhere': False})
-
-
-class CompileError(Exception):
-    """This is raised and displayed to the user during compilation.
-
-    CompileError objects have ``message``, ``lineno``, ``start`` and
-    ``end`` attributes. ``message`` is a string, ``endcolumn`` is an
-    integer or None and other attributes are integers.
-
-    ``start`` and ``end`` are column numbers. Note that None behaves
-    nicely in slices, so ``line[error.start:error.end]`` always works::
-
-        >>> 'hello'[2:None]      # same as 'hello'[2:]
-        'llo'
-    """
-
-    # this throws away the end's lineno, but usually this is good enough
-    def __init__(self, message, location):
-        self.message = message
-
-        if location is None:
-            start = end = None
-        else:
-            try:
-                start, end = location.start, location.end
-            except AttributeError:
-                # assume a (start, end) tuple
-                start, end = location
-
-        if start is None or end is None:
-            print("WARNING: missing start or end")
-            self.lineno = None
-            self.start = None
-            self.end = None
-            return
-
-        # (line, column) tuples compare nicely
-        if start > end:
-            raise ValueError("the error ends before it starts")
-
-        self.lineno, self.start = start
-
-        endlineno, endcolumn = end
-        if start == end:
-            # let's highlight the character right after the spot that
-            # start and end point at
-            endcolumn += 1
-
-        if endlineno == self.lineno:
-            self.end = endcolumn
-        else:
-            # it's never-ending :D
-            # we can only display the first line in an error message, so
-            # we'll just display until its end
-            self.end = None
-
-
-def _add_article(string):
-    # if the string is prefixed with e.g. quotes, handle that
-    first_letter = string.lstrip(string_module.punctuation)[0]
-    article = 'an' if first_letter in 'AEIOUYaeiouy' else 'a'
-    return article + ' ' + string
 
 
 # TODO: support some kind of inheritance? currently == is used for
@@ -183,10 +83,10 @@ class Scope:
         variable = self._variables[name]
         what = ('function' if isinstance(variable.value.type, FunctionType)
                 else 'variable')
-        msg = "there's already a %s named '%s'" % (what, name)
-        raise CompileError(msg, node)
+        raise CompileError("there's already a %s named '%s'" % (what, name),
+                           node.location)
 
-    def _get_var(self, name, node, *,
+    def _get_var(self, name, location, *,
                  require_initialized=True, mark_used=True):
         """Get the value of a variable.
 
@@ -197,10 +97,10 @@ class Scope:
         try:
             var = self._variables[name]
         except KeyError:
-            raise CompileError("no variable named '%s'" % name, node)
+            raise CompileError("no variable named '%s'" % name, location)
         if require_initialized and not var.initialized:
             # TODO: better error message
-            raise CompileError("variable '%s' is not initialized")
+            raise CompileError("variable '%s' is not initialized", location)
 
         if mark_used:
             var.used_somewhere = True
@@ -210,14 +110,16 @@ class Scope:
         defined_vars = self._variables.maps[0]
         for name, var in defined_vars.items():
             if not var.used_somewhere:
-                # TODO: remove everything that uses this var from the AST
-                print("WARNING: unused variable '%s' defined on line %d"
-                      % (name, var.definition_start[0]))
+                # TODO: get rid of the definition of this var
+                print(var.defined_location)
+                error = CompileError(
+                    "this variable isn't used anywhere", var.defined_location)
+                print(error.show('the code will appear here later', 'warning'))
 
     def evaluate(self, expression, *, allow_no_value=False):
         """Pseudo-run an expression."""
         if isinstance(expression, ast.Name):
-            var = self._get_var(expression.name, expression)
+            var = self._get_var(expression.name, expression.location)
             if var.value is not None:
                 # we know its value already for some reason
                 return var.value
@@ -235,7 +137,7 @@ class Scope:
             func = self.evaluate(expression.function)
             if not isinstance(func.type, FunctionType):
                 raise CompileError(
-                    "'%s' is not a function", expression.function)
+                    "this is not a function", expression.function.location)
 
             args = list(map(self.evaluate, expression.args))
 
@@ -252,11 +154,12 @@ class Scope:
                 raise CompileError(
                     "should be {name}({}), not {name}({})"
                     .format(good, bad, name=func.type.name),
-                    expression)
+                    expression.location)
 
             if func.type.returntype is None:
                 if not allow_no_value:
-                    raise CompileError("this returns nothing", expression)
+                    raise CompileError(
+                        "this returns nothing", expression.location)
                 return None
             else:
                 return Instance(func.type.returntype)
@@ -273,8 +176,7 @@ class Scope:
             vartype = self.evaluate(statement.type)
             assert vartype is not None
             self._variables[statement.name] = Variable(
-                next(self.counter), Instance(vartype),
-                statement.start, statement.end)
+                next(self.counter), Instance(vartype), statement.location)
 
         elif isinstance(statement, ast.Assignment):
             assert isinstance(statement.target, ast.Name)  # TODO
@@ -282,13 +184,14 @@ class Scope:
             # TODO: suggest "Int a = 123;" instead of "a = 123;" in the
             # error message
             variable = self._get_var(
-                statement.target.name, statement.target,
+                statement.target.name, statement.target.location,
                 mark_used=False, require_initialized=False)
 
             new_value = self.evaluate(statement.value)
             if new_value is None:
                 # TODO: better error message
-                raise CompileError("this returns nothing", statement.value)
+                raise CompileError("this returns nothing",
+                                   statement.value.location)
 
             if new_value.type != variable.value.type:
                 # when implementing this, remember to do something
@@ -300,14 +203,16 @@ class Scope:
                     "function" if isinstance(new_value.type, FunctionType)
                     else new_type.name)
 
-                msg = "%s needs to be %s, not %s" % (
-                    statement.target.name, correct_typename, wrong_typename)
-                raise CompileError(msg, statement)
+                raise CompileError(
+                    "%s needs to be %s, not %s" % (
+                        statement.target.name, correct_typename,
+                        wrong_typename),
+                    statement.location)
 
             if self._find_scope(statement.target.name).kind != 'inner':
                 raise CompileError(
                     "sorry, global variables aren't supported yet :(",
-                    statement)
+                    statement.location)
 
             self._variables[statement.target.name].initialized = True
 
@@ -320,7 +225,8 @@ class Scope:
         elif isinstance(statement, ast.FunctionDef):
             assert self.kind != 'builtin'
             raise CompileError(
-                "cannot define a function inside a function", statement)
+                "cannot define a function inside a function",
+                statement.location)
 
         elif isinstance(statement, ast.ExpressionStatement):
             value = self.evaluate(statement.expression, allow_no_value=True)
@@ -345,8 +251,8 @@ class Scope:
         #   function lel() { Int lel = 123; }
         functype = FunctionType(function.name, argtypes, None)
         self._variables[function.name] = Variable(
-            next(self.counter), Instance(functype),
-            function.start, function.end, initialized=True)
+            next(self.counter), Instance(functype), function.location,
+            initialized=True)
 
     def execute_function_def(self, function):
         scope = Scope(self)
@@ -355,19 +261,18 @@ class Scope:
         scope.check_unused_vars()
 
 
-#['id', 'value', 'definition_start', 'definition_end'],
 _BUILTIN_SCOPE = Scope(None)
-_BUILTIN_SCOPE._variables.update({
-    'Int': Variable(next(_BUILTIN_SCOPE.counter), INT_TYPE, None, None, initialized=True),
-    'String': Variable(next(_BUILTIN_SCOPE.counter), STRING_TYPE, None, None, initialized=True),
-})
+_BUILTIN_SCOPE._variables['Int'] = Variable(
+    next(_BUILTIN_SCOPE.counter), INT_TYPE, None, initialized=True)
+_BUILTIN_SCOPE._variables['String'] = Variable(
+    next(_BUILTIN_SCOPE.counter), STRING_TYPE, None, initialized=True)
 
 
 def check(ast_nodes):
     global_scope = Scope(_BUILTIN_SCOPE)
 
-    # all functions need to be declared before using them in C, so we'll
-    # just forward-declare everything
+    # all functions need to be declared before using them, so we'll just
+    # forward-declare everything
     for function in ast_nodes:
         global_scope.declare_function(function)
     for function in ast_nodes:
@@ -396,26 +301,9 @@ if __name__ == '__main__':
             ast_tree = list(ast.parse(tokens, code.splitlines()))
             check(ast_tree)
         except CompileError as error:
-            # minimal but cool error handling :)
-            if error.lineno is None:
-                # there's no information about where it came from :( this
-                # should probably be fixed
-                raise error
-
             line = code.splitlines()[error.lineno-1]
-
-            # tab expanding makes this a bit tricky... '\tlol\t' is 8
-            # characters long with 4-character tabs, not 11 characters
-            before_error_part = line[:error.start].expandtabs(4)
-            error_part = line[:error.end].expandtabs(4)[len(before_error_part):]
-
-            padding = ' ' * len(before_error_part.lstrip())
-            underline = '^' * len(error_part)
-
-            print("error on line %d: %s" % (error.lineno, error.message))
-            print('  ' + line.expandtabs(4).lstrip())
-            print('  ' + padding + underline)
-            print()
-
+            print(error.show(line))
         except Exception:
             traceback.print_exc()
+        else:
+            print("ok")

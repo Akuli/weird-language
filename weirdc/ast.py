@@ -1,6 +1,9 @@
 """The abstract syntax tree."""
 
 import collections
+import functools
+
+from weirdc import CompileError, Location, utils
 
 
 class _HandyDandyTokenIterator:
@@ -34,72 +37,36 @@ class _HandyDandyTokenIterator:
     # this must be "check and pop", not "pop and check"
     # that way this can be used in try/except
     def check_and_pop(self, kind, value=None):
-        assert self.coming_up().kind == kind, self.coming_up()
-        if value is not None:
-            assert self.coming_up().value == value, self.coming_up()
+        if value is not None and self.coming_up().value != value:
+            # TODO: currently forgetting a semicolon like this...
+            #     function something() { lel() }
+            # ...results in an error message which says that the '}'
+            # should be ';'
+            raise CompileError(
+                "this should be '%s'" % value,
+                self.coming_up().location)
+
+        if self.coming_up().kind != kind:
+            raise CompileError(
+                "this should be %s" % weirdc.utils.add_article(kind.lower()),
+                self.coming_up().location)
+
         return self.pop()
 
 
-# the optional fields will be filled out later
-# TODO: add the name of the file that does this to this comment
-# (i'm not sure about the name yet)
-def _nodetype(name, required_fields, optional_fields=()):
-    # this is equivalent enough to doing this:
-    #    class <name>:
-    #        # only allow these attributes, source is added by
-    #        # _Parser.add_source()
-    #        __slots__ = required_fields + optional_fields + [
-    #            'start', 'end', 'source']
-    #
-    #        def __init__(self, <args>, start=None, end=None):
-    #            for each required field:
-    #                self.<field> = <value from args>
-    #            for each optional field:
-    #                self.<field> = None
-    #            self.start = start
-    #            self.end = end
-    #
-    #        # just for debugging
-    #        def __repr__(self):
-    #            # this doesn't show start, end and other optional things, most
-    #            # of the time i don't care about them
-    #            return '<name>(<values of the required fields>)'
-    def dunder_init(self, *args, start=None, end=None):
-        self.start = start
-        self.end = end
-        assert len(required_fields) == len(args)
-        for name, value in zip(required_fields, args):
-            setattr(self, name, value)
-        for name in optional_fields:
-            setattr(self, name, None)
+def _node(name, fields):
+    return utils.miniclass(__name__, name, fields + ['location'])
 
-    def dunder_repr(self):
-        parts = [repr(getattr(self, name)) for name in required_fields]
-        return 'ast.' + name + '(' + ', '.join(parts) + ')'
-
-    # slots is defined separately because pep8 weird indent rules and
-    # max line length, that's also why .split()
-    return type(name, (), {
-        '__init__': dunder_init,
-        '__repr__': dunder_repr,
-        '__slots__': (
-            required_fields + list(optional_fields)
-            + ['start', 'end', 'source']),
-    })
-
-
-Name = _nodetype('Name', ['name'])
-Integer = _nodetype('Integer', ['value'])
-String = _nodetype('String', ['value'])
-FunctionCall = _nodetype('FunctionCall', ['function', 'args'], ['returntype'])
-ExpressionStatement = _nodetype('ExpressionStatement', ['expression'])
-Declaration = _nodetype('Declaration', ['type', 'name'])
-Assignment = _nodetype('Assignment', ['target', 'value'])
-If = _nodetype('If', ['condition', 'body'])
-FunctionDef = _nodetype('FunctionDef', ['name', 'args', 'returntype', 'body'])
-Return = _nodetype('Return', ['value'])
-DecRef = _nodetype('DecRef', ['name'])
-
+Name = _node('Name', ['name'])
+Integer = _node('Integer', ['value'])
+String = _node('String', ['value'])
+FunctionCall = _node('FunctionCall', ['function', 'args'])
+ExpressionStatement = _node('ExpressionStatement', ['expression'])
+Declaration = _node('Declaration', ['type', 'name'])
+Assignment = _node('Assignment', ['target', 'value'])
+If = _node('If', ['condition', 'body'])
+FunctionDef = _node('FunctionDef', ['name', 'args', 'returntype', 'body'])
+Return = _node('Return', ['value'])
 
 KEYWORDS = {'return', 'if'}
 
@@ -113,23 +80,9 @@ class _Parser:
         self.sourcelines = [None] + sourcelines     # 1-based indexing
 
     # calls to this in rest of the code are kind of annoying, but this
-    # way making error messages is easier
+    # was supposed to ease making error messages... i'll get rid of this
+    # soon
     def add_source(self, node):
-        if node.start is None or node.end is None:
-            node.source = None
-        else:
-            assert node.start < node.end, "the node must start before it ends"
-
-            startline, startcol = node.start
-            endline, endcol = node.end
-            if startline == endline:
-                node.source = self.sourcelines[startline][startcol:endcol]
-            else:
-                first = self.sourcelines[startline][startcol:]
-                rest = self.sourcelines[startline+1:endline]
-                last = self.sourcelines[endline][:endcol]
-                node.source = '\n'.join([first] + rest + [last])
-
         return node
 
     def parse_name(self, check_for_keywords=True):
@@ -137,21 +90,18 @@ class _Parser:
         token = self.tokens.check_and_pop('NAME')
         if check_for_keywords:
             assert token.value not in KEYWORDS, token.value
-        return self.add_source(Name(
-            token.value, start=token.start, end=token.end))
+        return self.add_source(Name(token.value, token.location))
 
     def parse_integer(self):
         # 3735928559
         token = self.tokens.check_and_pop('INTEGER')
-        return self.add_source(Integer(
-            int(token.value), start=token.start, end=token.end))
+        return self.add_source(Integer(int(token.value), token.location))
 
     def parse_string(self):
         # "hello world"
         # TODO: "hello \"world\" ${some code}"
         token = self.tokens.check_and_pop('STRING')
-        return self.add_source(String(
-            token.value[1:-1], start=token.start, end=token.end))
+        return self.add_source(String(token.value[1:-1], token.location))
 
     def _parse_comma_list(self, stop=')', parsemethod=None):
         # )
@@ -164,18 +114,18 @@ class _Parser:
             parsemethod = self.parse_expression
 
         elements = []
-        if self.tokens.coming_up().info == ('OP', stop):
+        if self.tokens.coming_up().startswith(['OP', stop]):
             # empty list
             last_token = self.tokens.pop()
         else:
             while True:
                 elements.append(parsemethod())
-                if self.tokens.coming_up().info == ('OP', stop):
+                if self.tokens.coming_up().startswith(['OP', stop]):
                     last_token = self.tokens.pop()
                     break
 
                 self.tokens.check_and_pop('OP', ',')
-                if self.tokens.coming_up().info == ('OP', stop):
+                if self.tokens.coming_up().startswith(['OP', stop]):
                     last_token = self.tokens.pop()
                     break
 
@@ -183,30 +133,30 @@ class _Parser:
 
     def parse_expression(self):
         coming_up = self.tokens.coming_up()
-        next_kind = coming_up.kind
-        if next_kind == 'NAME':
+        if coming_up.kind == 'NAME':
             # hello
             result = self.parse_name()
-        elif next_kind == 'STRING':
+        elif coming_up.kind == 'STRING':
             # "hello"
             result = self.parse_string()
-        elif next_kind == 'INTEGER':
+        elif coming_up.kind == 'INTEGER':
             # 123
             result = self.parse_integer()
         else:
-            raise ValueError(f"Invalid token: {coming_up!r}")
+            raise CompileError(
+                "this should be a name, string or integer", coming_up.location)
 
-        # check for function calls, this is a while loop to allow nested
+        # check for function calls, this is a while loop to allow
         # function calls like thing()()()
         while True:
             next_token = self.tokens.coming_up()
-            if next_token.kind != 'OP' or next_token.value != '(':
+            if not next_token.startswith(['OP', '(']):
                 break
 
-            openparen = self.tokens.check_and_pop('OP', '(')
+            self.tokens.check_and_pop('OP', '(')
             args, last_token = self._parse_comma_list()
             result = self.add_source(FunctionCall(
-                result, args, start=result.start, end=last_token.end))
+                result, args, Location.between(result, last_token)))
 
         return result
 
@@ -217,7 +167,7 @@ class _Parser:
         value = self.parse_expression()
         semicolon = self.tokens.check_and_pop('OP', ';')
         return self.add_source(ExpressionStatement(
-            value, start=value.start, end=semicolon.end))
+            value, Location.between(value, semicolon)))
 
     def assignment(self):
         # thing = value
@@ -226,8 +176,8 @@ class _Parser:
         self.tokens.check_and_pop('OP', '=')
         value = self.parse_expression()
         semicolon = self.tokens.check_and_pop('OP', ';')
-        return self.add_source(Assignment(
-            target, value, start=target.start, end=semicolon.end))
+        where = Location.between(target, semicolon)
+        return self.add_source(Assignment(target, value, where))
 
     def parse_if(self):
         the_if = self.tokens.check_and_pop('NAME', 'if')
@@ -235,12 +185,12 @@ class _Parser:
         self.tokens.check_and_pop('OP', '{')
 
         body = []
-        while self.tokens.coming_up().info != ('OP', '}'):
+        while self.tokens.coming_up().startswith(['OP', '}']):
             body.extend(self.parse_statement())
 
         closing_brace = self.tokens.check_and_pop('OP', '}')
         return self.add_source(If(
-            condition, body, start=the_if.start, end=closing_brace.end))
+            condition, body, Location.between(the_if, closing_brace)))
 
     def _type_and_name(self):
         # Int a;
@@ -264,16 +214,16 @@ class _Parser:
         if third_thing.value == ';':
             return [self.add_source(Declaration(
                 datatype, variable.name,
-                start=datatype.start, end=third_thing.end))]
+                Location.between(datatype, third_thing)))]
 
         assert third_thing.value == '='
         initial_value = self.parse_expression()
         semicolon = self.tokens.check_and_pop('OP', ';')
         return map(self.add_source, [
             Declaration(datatype, variable.name,
-                        start=datatype.start, end=variable.end),
+                        Location.between(datatype, variable)),
             Assignment(variable, initial_value,
-                       start=variable.start, end=semicolon.end),
+                       Location.between(variable, semicolon)),
         ])
 
     def parse_return(self):
@@ -281,7 +231,7 @@ class _Parser:
         value = self.parse_expression()
         semicolon = self.tokens.check_and_pop('OP', ';')
         return self.add_source(Return(
-            value, start=the_return.start, end=semicolon.end))
+            value, Location.between(the_return, semicolon)))
 
     # RETURNS AN ITERABLE
     def parse_statement(self):
@@ -296,7 +246,7 @@ class _Parser:
                 return [self.parse_function_def()]
 
             after_name = self.tokens.coming_up(2)
-            if after_name.info == ('OP', '='):
+            if after_name.startswith(['OP', '=']):
                 return [self.assignment()]
             if after_name.kind == 'NAME':
                 return self.parse_declaration()
@@ -311,21 +261,21 @@ class _Parser:
         self.tokens.check_and_pop('OP', '(')
         args, junk = self._parse_comma_list(parsemethod=self._type_and_name)
 
-        if self.tokens.coming_up().info == ('NAME', 'returns'):
+        if self.tokens.coming_up().startswith(['NAME', 'returns']):
             self.tokens.pop()
             returntype = self.parse_name()
         else:
             returntype = None
 
-        before_body = self.tokens.check_and_pop('OP')
+        self.tokens.check_and_pop('OP')
         body = []
-        while self.tokens.coming_up().info != ('OP', '}'):
+        while not self.tokens.coming_up().startswith(['OP', '}']):
             body.extend(self.parse_statement())
         closing_brace = self.tokens.check_and_pop('OP', '}')
 
         return self.add_source(FunctionDef(
             name.name, args, returntype, body,
-            start=function_keyword.start, end=closing_brace.end))
+            Location.between(function_keyword, closing_brace)))
 
     def parse_file(self):
         while True:
