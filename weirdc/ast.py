@@ -79,29 +79,23 @@ class _Parser:
         self.tokens = _HandyDandyTokenIterator(tokens)
         self.sourcelines = [None] + sourcelines     # 1-based indexing
 
-    # calls to this in rest of the code are kind of annoying, but this
-    # was supposed to ease making error messages... i'll get rid of this
-    # soon
-    def add_source(self, node):
-        return node
-
     def parse_name(self, check_for_keywords=True):
         # thing
         token = self.tokens.check_and_pop('NAME')
         if check_for_keywords:
             assert token.value not in KEYWORDS, token.value
-        return self.add_source(Name(token.value, token.location))
+        return Name(token.value, token.location)
 
     def parse_integer(self):
         # 3735928559
         token = self.tokens.check_and_pop('INTEGER')
-        return self.add_source(Integer(int(token.value), token.location))
+        return Integer(int(token.value), token.location)
 
     def parse_string(self):
         # "hello world"
         # TODO: "hello \"world\" ${some code}"
         token = self.tokens.check_and_pop('STRING')
-        return self.add_source(String(token.value[1:-1], token.location))
+        return String(token.value[1:-1], token.location)
 
     def _parse_comma_list(self, stop=')', parsemethod=None):
         # )
@@ -155,8 +149,8 @@ class _Parser:
 
             self.tokens.check_and_pop('OP', '(')
             args, last_token = self._parse_comma_list()
-            result = self.add_source(FunctionCall(
-                result, args, Location.between(result, last_token)))
+            result = FunctionCall(
+                result, args, Location.between(result, last_token))
 
         return result
 
@@ -166,8 +160,7 @@ class _Parser:
         # expression;
         value = self.parse_expression()
         semicolon = self.tokens.check_and_pop('OP', ';')
-        return self.add_source(ExpressionStatement(
-            value, Location.between(value, semicolon)))
+        return ExpressionStatement(value, Location.between(value, semicolon))
 
     def assignment(self):
         # thing = value
@@ -177,7 +170,7 @@ class _Parser:
         value = self.parse_expression()
         semicolon = self.tokens.check_and_pop('OP', ';')
         where = Location.between(target, semicolon)
-        return self.add_source(Assignment(target, value, where))
+        return Assignment(target, value, where)
 
     def parse_if(self):
         the_if = self.tokens.check_and_pop('NAME', 'if')
@@ -189,8 +182,7 @@ class _Parser:
             body.extend(self.parse_statement())
 
         closing_brace = self.tokens.check_and_pop('OP', '}')
-        return self.add_source(If(
-            condition, body, Location.between(the_if, closing_brace)))
+        return If(condition, body, Location.between(the_if, closing_brace))
 
     def _type_and_name(self):
         # Int a;
@@ -199,8 +191,7 @@ class _Parser:
         name = self.parse_name()
         return (typenode, name)
 
-    # RETURNS AN ITERABLE
-    def parse_declaration(self):
+    def parse_declaration(self) -> list:
         # Int thing;
         # Int thing = expr;
         # TODO: module.Thingy thing;
@@ -212,29 +203,24 @@ class _Parser:
 
         third_thing = self.tokens.check_and_pop('OP')
         if third_thing.value == ';':
-            return [self.add_source(Declaration(
-                datatype, variable.name,
-                Location.between(datatype, third_thing)))]
+            return [Declaration(datatype, variable.name,
+                                Location.between(datatype, third_thing))]
 
         assert third_thing.value == '='
         initial_value = self.parse_expression()
         semicolon = self.tokens.check_and_pop('OP', ';')
-        return map(self.add_source, [
-            Declaration(datatype, variable.name,
-                        Location.between(datatype, variable)),
-            Assignment(variable, initial_value,
-                       Location.between(variable, semicolon)),
-        ])
+        return [Declaration(datatype, variable.name,
+                            Location.between(datatype, variable)),
+                Assignment(variable, initial_value,
+                           Location.between(variable, semicolon))]
 
     def parse_return(self):
         the_return = self.tokens.check_and_pop('NAME', 'return')
         value = self.parse_expression()
         semicolon = self.tokens.check_and_pop('OP', ';')
-        return self.add_source(Return(
-            value, Location.between(the_return, semicolon)))
+        return Return(value, Location.between(the_return, semicolon))
 
-    # RETURNS AN ITERABLE
-    def parse_statement(self):
+    def parse_statement(self) -> list:
         # coming_up(1) and coming_up(2) work because there's always a
         # semicolon and at least something before it
         if self.tokens.coming_up(1).kind == 'NAME':
@@ -273,9 +259,8 @@ class _Parser:
             body.extend(self.parse_statement())
         closing_brace = self.tokens.check_and_pop('OP', '}')
 
-        return self.add_source(FunctionDef(
-            name.name, args, returntype, body,
-            Location.between(function_keyword, closing_brace)))
+        return FunctionDef(name.name, args, returntype, body,
+                           Location.between(function_keyword, closing_brace))
 
     def parse_file(self):
         while True:
