@@ -20,25 +20,15 @@ def fake_keyword():
     ast._KEYWORDS.remove('fake')
 
 
-@contextlib.contextmanager
-def error_at(*location_args, message=None):
-    with pytest.raises(CompileError) as err:
-        yield
-
-    assert err.value.location == Location(*location_args)
-    if message is not None:
-        assert err.value.message == message
-
-
-def test_parse_name(fake_keyword):
+def test_parse_name(fake_keyword, utils):
     assert get_ast('hello;') == [
         ast.ExpressionStatement(
             Location(0, 6),
             ast.Name(Location(0, 5), 'hello'))
     ]
 
-    with error_at(0, 4, message=("fake is not a valid variable name "
-                                 "because it has a special meaning")):
+    with utils.error_at(0, 4, message=("fake is not a valid variable name "
+                                       "because it has a special meaning")):
         get_ast('fake;')
 
 
@@ -91,7 +81,7 @@ def test_function_calls():
     ]
 
 
-def test_trailing_commas():
+def test_trailing_commas(utils):
     assert get_ast('lol(1,);\n'
                    'lol(1, 2, 3,);') == [
         ast.ExpressionStatement(
@@ -110,16 +100,16 @@ def test_trailing_commas():
                  ast.Integer(Location(10, 11, 2), '3')])),
     ]
 
-    with error_at(4, 5, message="don't put a ',' here"):
+    with utils.error_at(4, 5, message="don't put a ',' here"):
         get_ast('lol(,)')
-    with error_at(4, 5, message="don't put a ',' here"):
+    with utils.error_at(4, 5, message="don't put a ',' here"):
         get_ast('lol(,,)')
-    with error_at(13, 15, message="two ',' characters"):
+    with utils.error_at(13, 15, message="two ',' characters"):
         get_ast('lol(something,,)')
 
     # this doesn't matter much because it's unlikely that anyone will
     # accidentally put 3 commas next to each other
-    with error_at(13, 15, message="two ',' characters"):
+    with utils.error_at(13, 15, message="two ',' characters"):
         get_ast('lol(something,,,)')
 
 
