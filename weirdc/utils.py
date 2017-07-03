@@ -1,4 +1,5 @@
 import collections
+import string as string_module
 
 
 def add_article(string):

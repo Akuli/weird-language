@@ -51,7 +51,7 @@ class _HandyDandyTokenIterator:
 
         if self.coming_up().kind != kind:
             raise CompileError(
-                "this should be %s" % weirdc.utils.add_article(kind.lower()),
+                "this should be %s" % utils.add_article(kind.lower()),
                 self.coming_up().location)
 
         return self.pop()
@@ -110,6 +110,15 @@ class _Parser:
         except EOFError:
             raise CompileError("missing '%s'" % stop, start_token.location)
 
+    def parse_parentheses(self):
+        # ( expr )
+        # parentheses don't have a node type because they just change
+        # the evaluation order
+        with self._parentheses('(', ')'):
+            content = self.parse_expression()
+            self.tokens.check_and_pop('OP', ')')
+        return content
+
     # return (element_list, stop_token)
     def _parse_comma_list(self, start='(', stop=')', parsemethod=None):
         # ( )
@@ -156,9 +165,12 @@ class _Parser:
         elif coming_up.kind == 'INTEGER':
             # 123
             result = self.parse_integer()
+        elif coming_up.startswith(['OP', '(']):
+            result = self.parse_parentheses()
         else:
-            raise CompileError("this should be a name, string or integer",
-                               coming_up.location)
+            raise CompileError(
+                "this should be 'variable name, string, integer or '('",
+                coming_up.location)
 
         # check for function calls, this is a while loop to allow
         # function calls like thing()()()
@@ -186,18 +198,10 @@ class _Parser:
         semicolon = self.tokens.check_and_pop('OP', ';')
         return Assignment(Location.between(target, semicolon), target, value)
 
-    # TODO: add parentheses around the condition
-    #   old:    if stuff { thing; }
-    #   new:    if (stuff) { thing; }
-    #
-    # this way it's easier to get started with another programming
-    # language after learning this language
-    #
-    # parsing parentheses in general needs to be implemented, currently
-    # '(thing());' is not valid syntax
     def parse_if(self):
+        # if (cond) { statements; }
         the_if = self.tokens.check_and_pop('NAME', 'if')
-        condition = self.parse_expression()
+        condition = self.parse_parentheses()
         self.tokens.check_and_pop('OP', '{')
 
         body = []

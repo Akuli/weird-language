@@ -55,6 +55,16 @@ def test_parse_string():
     ]
 
 
+def test_parentheses():
+    # FIXME: currently the whole ExpressionStatement starts at column 4
+    # and that's not quite right...
+    assert get_ast('(((("hello"))));') == [
+        ast.ExpressionStatement(
+            Location(4, 16),
+            ast.String(Location(4, 11), 'hello')),
+    ]
+
+
 # FIXME: get_ast('lol()') doesn't say that a semicolon is missing
 def test_function_calls():
     assert get_ast('lol();\n'
@@ -173,19 +183,20 @@ def test_declaration_and_assignment():
 
 
 def test_if():
-    assert get_ast('if thing { }') == [
+    assert get_ast('if (thing) { }') == [
         ast.If(
-            Location(0, 12),
-            ast.Name(Location(3, 8), 'thing'),
+            Location(0, 14),
+            ast.Name(Location(4, 9), 'thing'),
             []),
     ]
-    assert get_ast('if thing {\n'
+
+    assert get_ast('if (thing) {\n'
                    '\tstuff;\n'
                    '\tmore_stuff;\n'
                    '}') == [
         ast.If(
             Location(0, None),    # None because it's not a 1-liner
-            ast.Name(Location(3, 8), 'thing'),
+            ast.Name(Location(4, 9), 'thing'),
             [
                 ast.ExpressionStatement(
                     Location(4, 10, 2),
@@ -256,12 +267,12 @@ def test_end_of_file(utils):
 
     with utils.error_at(17, 18, message="missing '}'"):
         get_ast('function thing() {\n'
-                '\tif stuff {\n'
+                '\tif (stuff) {\n'
                 '\t\tthingies;\n'
                 '}')
 
     with utils.error_at(17, 18, message="missing '}'"):
-        get_ast('function thing() { if stuff {')
+        get_ast('function thing() { if (stuff) {')
 
     # yes, this is supposed to underline exactly 3 characters after the
     # last token
