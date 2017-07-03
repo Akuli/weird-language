@@ -21,16 +21,13 @@ def fake_keyword():
 
 
 @contextlib.contextmanager
-def error_at(*args, message=None):
-    with pytest.raises(CompileError) as error_info:
+def error_at(*location_args, message=None):
+    with pytest.raises(CompileError) as err:
         yield
 
-    error = error_info.value
-
-    good_place = Location(*args)
-    assert (error.start, error.end, error.lineno) == good_place
+    assert err.value.location == Location(*location_args)
     if message is not None:
-        assert error.message == message
+        assert err.value.message == message
 
 
 def test_parse_name(fake_keyword):
