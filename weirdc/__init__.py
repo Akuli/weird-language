@@ -58,10 +58,11 @@ class CompileError(Exception):
     """
 
     # this throws away the end's lineno, but usually this is good enough
-    def __init__(self, message: str, location: Location):
-        # TODO: use a self.location
-        self.start, self.end, self.lineno = location
+    def __init__(self, message, location):
+        # make CompileError(location, message) easy to debug
+        assert isinstance(location, Location)
         self.message = message
+        self.location = location
 
     # this isn't __str__ because this way the arguments don't need to be
     # passed to __init__()
@@ -69,9 +70,11 @@ class CompileError(Exception):
         r"""Get a string suitable for displaying to the user.
 
         *line_of_code* should be the line where this error occurred as a
-        string with or without trailing ``\n``. The error message will start
-        with *this_is*; usually it should be ``'error'`` or
-        ``'warning'``.
+        string with or without trailing ``\n``. Tabs will be expanded to
+        width 4 and leading whitespace will not be displayed.
+
+        The error message will start with *this_is*; usually it should
+        be ``'error'`` or ``'warning'``.
 
         >>> code = "\tbla bla bla"
         >>> error = CompileError("something went wrong", Location(123, 5, 8))
@@ -80,16 +83,18 @@ class CompileError(Exception):
           bla bla bla
               ^^^
         """
+        where = self.location
+
         # tab expanding makes this a bit tricky... '\tlol\t' is 8
         # characters long with 4-character tabs, not 11 characters
-        before_problem = line_of_code[:self.start].expandtabs(4)
-        problem = line_of_code[:self.end].expandtabs(4)[len(before_problem):]
+        before_problem = line_of_code[:where.start].expandtabs(4)
+        problem = line_of_code[:where.end].expandtabs(4)[len(before_problem):]
 
         padding = ' ' * len(before_problem.lstrip())
         underline = '^' * len(problem)
 
         return '\n'.join([
-            "%s on line %d: %s" % (this_is, self.lineno, self.message),
+            "%s on line %d: %s" % (this_is, where.lineno, self.message),
             '  ' + line_of_code.expandtabs(4).strip(),
             '  ' + padding + underline,
         ])
