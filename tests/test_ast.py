@@ -55,7 +55,7 @@ def test_parse_string():
     ]
 
 
-# FIXME: get_ast('lol()') raises an unhandled EOFError
+# FIXME: get_ast('lol()') doesn't say that a semicolon is missing
 def test_function_calls():
     assert get_ast('lol();\n'
                    'lol(1);\n'
@@ -243,3 +243,26 @@ def test_function_defs():
             ast.Name(Location(40, 46), 'String'),
             []),
     ]
+
+
+def test_end_of_file(utils):
+    # i'm not sure if pointing at the first ( or { is the right thing to
+    # do when braces are nested like this, but it's easier to implement
+    # and pypy does it so i think its ok
+    with utils.error_at(5, 6, message="missing ')'"):
+        get_ast('thing(\n'
+                '\tstuff()')
+
+    with utils.error_at(17, 18, message="missing '}'"):
+        get_ast('function thing() {\n'
+                '\tif stuff {'
+                '\t\tthingies;'
+                '}')
+
+    with utils.error_at(17, 18, message="missing '}'"):
+        get_ast('function thing() { if stuff {')
+
+    # yes, this is supposed to underline exactly 3 characters after the
+    # last token
+    with utils.error_at(14, 17, message="unexpected end of file"):
+        get_ast('function thing')

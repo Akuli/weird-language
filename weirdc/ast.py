@@ -6,33 +6,36 @@ import functools
 from weirdc import CompileError, Location, utils
 
 
+# this kind of abuses EOFError... feels good, i'm evil >:D MUHAHAHAA!!!
 class _HandyDandyTokenIterator:
 
     def __init__(self, iterable):
         self._iterator = iter(iterable)
         self._coming_up_stack = collections.deque()
 
+        # this is only used in _Parser.parse_file()
+        self.last_popped = None
+
     def pop(self):
         try:
-            return self._coming_up_stack.pop()
+            result = self._coming_up_stack.pop()
         except IndexError:
-            return next(self._iterator)
+            try:
+                result = next(self._iterator)
+            except StopIteration:
+                raise EOFError
+
+        self.last_popped = result
+        return result
 
     def coming_up(self, n=1):
         while len(self._coming_up_stack) < n:
             try:
+                # pop() doesn't work if there's something on _coming_up_stack
                 self._coming_up_stack.appendleft(next(self._iterator))
             except StopIteration as e:
                 raise EOFError from e
         return self._coming_up_stack[-n]
-
-    def something_coming_up(self):
-        if not self._coming_up_stack:
-            try:
-                self._coming_up_stack.appendleft(next(self._iterator))
-            except StopIteration:
-                return False
-        return True
 
     # this must be "check and pop", not "pop and check"
     # that way this can be used in try/except
@@ -98,7 +101,7 @@ class _Parser:
         token = self.tokens.check_and_pop('STRING')
         return String(token.location, token.value[1:-1])
 
-    def _parse_comma_list(self, stop=')', parsemethod=None):
+    def _parse_comma_list(self, start='(', stop=')', parsemethod=None):
         # )
         # element )
         # element , )
@@ -108,19 +111,22 @@ class _Parser:
         if parsemethod is None:
             parsemethod = self.parse_expression
 
-        elements = []
-        if self.tokens.coming_up().startswith(['OP', stop]):
-            # empty list
-            last_token = self.tokens.pop()
-        else:
+        start_token = self.tokens.check_and_pop('OP', start)
+
+        try:
+            if self.tokens.coming_up().startswith(['OP', stop]):
+                # empty list
+                return ([], self.tokens.pop())
+
+            elements = []
             while True:
                 if self.tokens.coming_up().startswith(['OP', ',']):
                     raise CompileError("don't put a ',' here",
                                        self.tokens.coming_up().location)
                 elements.append(parsemethod())
+
                 if self.tokens.coming_up().startswith(['OP', stop]):
-                    last_token = self.tokens.pop()
-                    break
+                    return (elements, self.tokens.pop())
 
                 comma = self.tokens.check_and_pop('OP', ',')
                 if self.tokens.coming_up().startswith(['OP', ',']):
@@ -129,10 +135,10 @@ class _Parser:
                         Location.between(comma, self.tokens.coming_up()))
 
                 if self.tokens.coming_up().startswith(['OP', stop]):
-                    last_token = self.tokens.pop()
-                    break
+                    return (elements, self.tokens.pop())
 
-        return (elements, last_token)
+        except EOFError:
+            raise CompileError("missing '%s'" % stop, start_token.location)
 
     def parse_expression(self):
         coming_up = self.tokens.coming_up()
@@ -152,9 +158,8 @@ class _Parser:
         # check for function calls, this is a while loop to allow
         # function calls like thing()()()
         while self.tokens.coming_up().startswith(['OP', '(']):
-            self.tokens.check_and_pop('OP', '(')
-            args, last_token = self._parse_comma_list()
-            result = FunctionCall(Location.between(result, last_token),
+            args, stop_token = self._parse_comma_list('(', ')')
+            result = FunctionCall(Location.between(result, stop_token),
                                   result, args)
 
         return result
@@ -257,8 +262,8 @@ class _Parser:
         # function thing() returns Int { ... }
         function_keyword = self.tokens.check_and_pop('NAME', 'function')
         name = self.parse_name()
-        self.tokens.check_and_pop('OP', '(')
-        args, junk = self._parse_comma_list(parsemethod=self._type_and_name)
+        args, junk = self._parse_comma_list(
+            '(', ')', parsemethod=self._type_and_name)
 
         if self.tokens.coming_up().startswith(['NAME', 'returns']):
             self.tokens.pop()
@@ -266,12 +271,18 @@ class _Parser:
         else:
             returntype = None
 
-        self.tokens.check_and_pop('OP')
-        body = []
-        while not self.tokens.coming_up().startswith(['OP', '}']):
-            body.extend(self.parse_statement())
-        closing_brace = self.tokens.check_and_pop('OP', '}')
+        opening_brace = self.tokens.check_and_pop('OP', '{')
 
+        # it would be hard to make _parse_comma_list() generic enough
+        # for this, so we'll just reimplement it here
+        body = []
+        try:
+            while not self.tokens.coming_up().startswith(['OP', '}']):
+                body.extend(self.parse_statement())
+        except EOFError:
+            raise CompileError("missing '}'", opening_brace.location)
+
+        closing_brace = self.tokens.check_and_pop('OP', '}')
         return FunctionDef(Location.between(function_keyword, closing_brace),
                            name.name, args, returntype, body)
 
@@ -282,7 +293,17 @@ class _Parser:
             except EOFError:
                 break
 
-            yield from self.parse_statement()
+            try:
+                yield from self.parse_statement()
+            except EOFError:
+                # underline 3 blanks after last token
+                last_location = self.tokens.last_popped.location
+                mark_here = Location(last_location.end, last_location.end+3,
+                                     last_location.lineno)
+
+                # python abbreviates this as EOF and beginners don't
+                # understand it, but i guess this one is good enough
+                raise CompileError("unexpected end of file", mark_here)
 
 
 def parse(tokens):
