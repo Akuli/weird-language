@@ -1,6 +1,7 @@
 """The abstract syntax tree."""
 
 import collections
+import contextlib
 import functools
 
 from weirdc import CompileError, Location, utils
@@ -101,19 +102,26 @@ class _Parser:
         token = self.tokens.check_and_pop('STRING')
         return String(token.location, token.value[1:-1])
 
+    @contextlib.contextmanager
+    def _parentheses(self, start, stop):
+        start_token = self.tokens.check_and_pop('OP', start)
+        try:
+            yield start_token
+        except EOFError:
+            raise CompileError("missing '%s'" % stop, start_token.location)
+
+    # return (element_list, stop_token)
     def _parse_comma_list(self, start='(', stop=')', parsemethod=None):
-        # )
-        # element )
-        # element , )
-        # element , element )
-        # element , element , )
+        # ( )
+        # ( element )
+        # ( element , )
+        # ( element , element )
+        # ( element , element , )
         # ...
         if parsemethod is None:
             parsemethod = self.parse_expression
 
-        start_token = self.tokens.check_and_pop('OP', start)
-
-        try:
+        with self._parentheses(start, stop) as start_token:
             if self.tokens.coming_up().startswith(['OP', stop]):
                 # empty list
                 return ([], self.tokens.pop())
@@ -136,9 +144,6 @@ class _Parser:
 
                 if self.tokens.coming_up().startswith(['OP', stop]):
                     return (elements, self.tokens.pop())
-
-        except EOFError:
-            raise CompileError("missing '%s'" % stop, start_token.location)
 
     def parse_expression(self):
         coming_up = self.tokens.coming_up()
@@ -271,18 +276,12 @@ class _Parser:
         else:
             returntype = None
 
-        opening_brace = self.tokens.check_and_pop('OP', '{')
-
-        # it would be hard to make _parse_comma_list() generic enough
-        # for this, so we'll just reimplement it here
-        body = []
-        try:
+        with self._parentheses('{', '}') as opening_brace:
+            body = []
             while not self.tokens.coming_up().startswith(['OP', '}']):
                 body.extend(self.parse_statement())
-        except EOFError:
-            raise CompileError("missing '}'", opening_brace.location)
+            closing_brace = self.tokens.check_and_pop('OP', '}')
 
-        closing_brace = self.tokens.check_and_pop('OP', '}')
         return FunctionDef(Location.between(function_keyword, closing_brace),
                            name.name, args, returntype, body)
 

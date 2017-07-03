@@ -255,8 +255,8 @@ def test_end_of_file(utils):
 
     with utils.error_at(17, 18, message="missing '}'"):
         get_ast('function thing() {\n'
-                '\tif stuff {'
-                '\t\tthingies;'
+                '\tif stuff {\n'
+                '\t\tthingies;\n'
                 '}')
 
     with utils.error_at(17, 18, message="missing '}'"):
