@@ -113,7 +113,7 @@ def test_trailing_commas(utils):
         get_ast('lol(something,,,)')
 
 
-def test_nested_function_calls():
+def test_function_returns_function():
     assert get_ast('lol()()();') == [
         ast.ExpressionStatement(
             Location(0, 10),
@@ -128,6 +128,7 @@ def test_nested_function_calls():
                     []),
                 [])),
     ]
+
     assert get_ast('lol(1, 2)(3, 4);') == [
         ast.ExpressionStatement(
             Location(0, 16),
