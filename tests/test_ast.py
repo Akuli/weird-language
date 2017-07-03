@@ -187,11 +187,11 @@ def test_if():
             ast.Name(Location(3, 8), 'thing'),
             [
                 ast.ExpressionStatement(
-                    Location(1, 7, 2),
-                    ast.Name(Location(1, 6, 2), 'stuff')),
+                    Location(4, 10, 2),
+                    ast.Name(Location(4, 9, 2), 'stuff')),
                 ast.ExpressionStatement(
-                    Location(1, 12, 3),
-                    ast.Name(Location(1, 11, 3), 'more_stuff')),
+                    Location(4, 15, 3),
+                    ast.Name(Location(4, 14, 3), 'more_stuff')),
             ]
         )
     ]
@@ -217,16 +217,16 @@ def test_function_defs():
             None,       # return type
             [           # body
                 ast.ExpressionStatement(
-                    Location(1, 7, 2),
+                    Location(4, 10, 2),
                     ast.FunctionCall(
-                        Location(1, 6, 2),
-                        ast.Name(Location(1, 4, 2), 'lol'),
+                        Location(4, 9, 2),
+                        ast.Name(Location(4, 7, 2), 'lol'),
                         [])),
                 ast.ExpressionStatement(
-                    Location(1, 7, 3),
+                    Location(4, 10, 3),
                     ast.FunctionCall(
-                        Location(1, 6, 3),
-                        ast.Name(Location(1, 4, 3), 'lol'),
+                        Location(4, 9, 3),
+                        ast.Name(Location(4, 7, 3), 'lol'),
                         [])),
             ]),
     ]

@@ -5,8 +5,8 @@ class Location(collections.namedtuple('Location', 'start end lineno')):
     r"""Information about where a token or AST node comes from.
 
     The *start* and *end* should be integers that represent column
-    counts, where the size of each tab is 1. For example, to highlight
-    ``hello`` in ``(tab)hello there``, use ``Location(lineno, 1, 6)``.
+    counts with tabs expanded to 4 spaces. For example, to highlight
+    ``hello`` in ``(tab)hello there``, use ``Location(4, 9, lineno)``.
 
     If ``end`` is None, it means the end of the line. Note that None
     behaves nicely with slices::
@@ -66,35 +66,40 @@ class CompileError(Exception):
 
     # this isn't __str__ because this way the arguments don't need to be
     # passed to __init__()
-    def show(self, line_of_code, this_is='error'):
+    def show(self, line, this_is='error'):
         r"""Get a string suitable for displaying to the user.
 
-        *line_of_code* should be the line where this error occurred as a
-        string with or without trailing ``\n``. Tabs will be expanded to
-        width 4 and leading whitespace will not be displayed.
+        *line* should be the line of code where this error occurred as a
+        string with tabs expanded to 4 spaces. Trailing whitespace is
+        ignored.
 
         The error message will start with *this_is*; usually it should
         be ``'error'`` or ``'warning'``.
 
-        >>> code = "\tbla bla bla"
-        >>> error = CompileError("something went wrong", Location(123, 5, 8))
-        >>> print(error.show(code))
-        error on line 123: something went wrong
+        >>> code = "    bla bla bla"
+        >>> error = CompileError("this is the 2nd bla", Location(8, 11, 123))
+        >>> print(error.show(code, "warning"))
+        warning on line 123: this is the 2nd bla
           bla bla bla
               ^^^
+        >>> error = CompileError("missing semicolon", Location(15, 18, 123))
+        >>> print(error.show(code))
+        error on line 123: missing semicolon
+          bla bla bla
+                     ^^^
         """
-        where = self.location
+        leading_spaces = len(line) - len(line.lstrip())
+        line = line.strip()
 
-        # tab expanding makes this a bit tricky... '\tlol\t' is 8
-        # characters long with 4-character tabs, not 11 characters
-        before_problem = line_of_code[:where.start].expandtabs(4)
-        problem = line_of_code[:where.end].expandtabs(4)[len(before_problem):]
+        start = self.location.start - leading_spaces
+        if self.location.end is None:
+            end = len(line)
+        else:
+            end = self.location.end - leading_spaces
 
-        padding = ' ' * len(before_problem.lstrip())
-        underline = '^' * len(problem)
-
+        # this is indented with 2 spaces because pep8 line length
         return '\n'.join([
-            "%s on line %d: %s" % (this_is, where.lineno, self.message),
-            '  ' + line_of_code.expandtabs(4).strip(),
-            '  ' + padding + underline,
+          '%s on line %d: %s' % (this_is, self.location.lineno, self.message),
+          '  ' + line,
+          '  ' + ' '*start + '^'*(end - start),
         ])

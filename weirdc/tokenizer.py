@@ -47,7 +47,10 @@ def tokenize(code):
     lineno = 1
     line_start = 0
 
-    for match in TOKEN_REGEX.finditer(code):
+    # expanding tabs here means that they will also be expanded in
+    # string literals, but it makes some things easier, see
+    # implementation of CompileError
+    for match in TOKEN_REGEX.finditer(code.expandtabs(4)):
         kind = match.lastgroup
         value = match.group(kind)
 

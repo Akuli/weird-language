@@ -40,7 +40,7 @@ def test_strings():
 def test_whitespace():
     assert tokenize(' \n \t \r  ') == []
     assert tokenize(' \n \t 123 \r ') == [
-        Token('INTEGER', r'123', Location(3, 6, 2)),
+        Token('INTEGER', '123', Location(5, 8, 2)),
     ]
 
 
@@ -81,12 +81,12 @@ def test_hello_world():
         Token('OP', '(', Location(13, 14, 5)),
         Token('OP', ')', Location(14, 15, 5)),
         Token('OP', '{', Location(16, 17, 5)),
-        Token('NAME', 'stdout', Location(1, 7, 6)),
-        Token('OP', '.', Location(7, 8, 6)),
-        Token('NAME', 'print', Location(8, 13, 6)),
-        Token('OP', '(', Location(13, 14, 6)),
-        Token('STRING', '"Hello World!"', Location(14, 28, 6)),
-        Token('OP', ')', Location(28, 29, 6)),
-        Token('OP', ';', Location(29, 30, 6)),
+        Token('NAME', 'stdout', Location(4, 10, 6)),
+        Token('OP', '.', Location(10, 11, 6)),
+        Token('NAME', 'print', Location(11, 16, 6)),
+        Token('OP', '(', Location(16, 17, 6)),
+        Token('STRING', '"Hello World!"', Location(17, 31, 6)),
+        Token('OP', ')', Location(31, 32, 6)),
+        Token('OP', ';', Location(32, 33, 6)),
         Token('OP', '}', Location(0, 1, 7)),
     ]
