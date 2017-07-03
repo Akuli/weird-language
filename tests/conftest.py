@@ -1,5 +1,3 @@
-import os
-
 try:
     import weirdc
 except ImportError:

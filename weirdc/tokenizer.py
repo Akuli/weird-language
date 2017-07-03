@@ -64,14 +64,8 @@ def tokenize(code):
 
         start = match.start() - line_start
         end = match.end() - line_start
-        location = weirdc.Location(lineno, start, end)
+        location = weirdc.Location(start, end, lineno)
 
         if kind == 'ERROR':
             raise weirdc.CompileError("I don't know what this is", location)
         yield Token(kind, value, location)
-
-
-if __name__ == '__main__':    # pragma: no cover
-    while True:
-        for token in tokenize(input('> ')):
-            print(token)

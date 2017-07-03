@@ -298,7 +298,7 @@ if __name__ == '__main__':
 
         try:
             tokens = tokenizer.tokenize(code)
-            ast_tree = list(ast.parse(tokens, code.splitlines()))
+            ast_tree = list(ast.parse(tokens))
             check(ast_tree)
         except CompileError as error:
             line = code.splitlines()[error.lineno-1]

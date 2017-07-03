@@ -42,9 +42,8 @@ class _HandyDandyTokenIterator:
             #     function something() { lel() }
             # ...results in an error message which says that the '}'
             # should be ';'
-            raise CompileError(
-                "this should be '%s'" % value,
-                self.coming_up().location)
+            raise CompileError("this should be '%s'" % value,
+                               self.coming_up().location)
 
         if self.coming_up().kind != kind:
             raise CompileError(
@@ -55,7 +54,7 @@ class _HandyDandyTokenIterator:
 
 
 def _node(name, fields):
-    return utils.miniclass(__name__, name, fields + ['location'])
+    return utils.miniclass(__name__, name, ['location'] + fields)
 
 Name = _node('Name', ['name'])
 Integer = _node('Integer', ['value'])
@@ -68,34 +67,36 @@ If = _node('If', ['condition', 'body'])
 FunctionDef = _node('FunctionDef', ['name', 'args', 'returntype', 'body'])
 Return = _node('Return', ['value'])
 
-KEYWORDS = {'return', 'if'}
+_KEYWORDS = {'return', 'if'}
 
 
 # FIXME: this should produce similar (overlapping) nodes for "Int a = 1;"
 # and "Int a; a = 1;" because it's simpler and checker.py relies on it
 class _Parser:
 
-    def __init__(self, tokens, sourcelines):
+    def __init__(self, tokens):
         self.tokens = _HandyDandyTokenIterator(tokens)
-        self.sourcelines = [None] + sourcelines     # 1-based indexing
 
     def parse_name(self, check_for_keywords=True):
         # thing
         token = self.tokens.check_and_pop('NAME')
-        if check_for_keywords:
-            assert token.value not in KEYWORDS, token.value
-        return Name(token.value, token.location)
+        if check_for_keywords and token.value in _KEYWORDS:
+            raise CompileError(
+                "%s is not a valid variable name because it has a "
+                "special meaning" % token.value,
+                token.location)
+        return Name(token.location, token.value)
 
     def parse_integer(self):
         # 3735928559
         token = self.tokens.check_and_pop('INTEGER')
-        return Integer(int(token.value), token.location)
+        return Integer(token.location, token.value)
 
     def parse_string(self):
         # "hello world"
         # TODO: "hello \"world\" ${some code}"
         token = self.tokens.check_and_pop('STRING')
-        return String(token.value[1:-1], token.location)
+        return String(token.location, token.value[1:-1])
 
     def _parse_comma_list(self, stop=')', parsemethod=None):
         # )
@@ -113,12 +114,20 @@ class _Parser:
             last_token = self.tokens.pop()
         else:
             while True:
+                if self.tokens.coming_up().startswith(['OP', ',']):
+                    raise CompileError("don't put a ',' here",
+                                       self.tokens.coming_up().location)
                 elements.append(parsemethod())
                 if self.tokens.coming_up().startswith(['OP', stop]):
                     last_token = self.tokens.pop()
                     break
 
-                self.tokens.check_and_pop('OP', ',')
+                comma = self.tokens.check_and_pop('OP', ',')
+                if self.tokens.coming_up().startswith(['OP', ',']):
+                    raise CompileError(
+                        "two ',' characters",
+                        Location.between(comma, self.tokens.coming_up()))
+
                 if self.tokens.coming_up().startswith(['OP', stop]):
                     last_token = self.tokens.pop()
                     break
@@ -137,20 +146,16 @@ class _Parser:
             # 123
             result = self.parse_integer()
         else:
-            raise CompileError(
-                "this should be a name, string or integer", coming_up.location)
+            raise CompileError("this should be a name, string or integer",
+                               coming_up.location)
 
         # check for function calls, this is a while loop to allow
         # function calls like thing()()()
-        while True:
-            next_token = self.tokens.coming_up()
-            if not next_token.startswith(['OP', '(']):
-                break
-
+        while self.tokens.coming_up().startswith(['OP', '(']):
             self.tokens.check_and_pop('OP', '(')
             args, last_token = self._parse_comma_list()
-            result = FunctionCall(
-                result, args, Location.between(result, last_token))
+            result = FunctionCall(Location.between(result, last_token),
+                                  result, args)
 
         return result
 
@@ -160,7 +165,7 @@ class _Parser:
         # expression;
         value = self.parse_expression()
         semicolon = self.tokens.check_and_pop('OP', ';')
-        return ExpressionStatement(value, Location.between(value, semicolon))
+        return ExpressionStatement(Location.between(value, semicolon), value)
 
     def assignment(self):
         # thing = value
@@ -169,20 +174,28 @@ class _Parser:
         self.tokens.check_and_pop('OP', '=')
         value = self.parse_expression()
         semicolon = self.tokens.check_and_pop('OP', ';')
-        where = Location.between(target, semicolon)
-        return Assignment(target, value, where)
+        return Assignment(Location.between(target, semicolon), target, value)
 
+    # TODO: add parentheses around the condition
+    #   old:    if stuff { thing; }
+    #   new:    if (stuff) { thing; }
+    #
+    # this way it's easier to get started with another programming
+    # language after learning this language
+    #
+    # parsing parentheses in general needs to be implemented, currently
+    # '(thing());' is not valid syntax
     def parse_if(self):
         the_if = self.tokens.check_and_pop('NAME', 'if')
         condition = self.parse_expression()
         self.tokens.check_and_pop('OP', '{')
 
         body = []
-        while self.tokens.coming_up().startswith(['OP', '}']):
+        while not self.tokens.coming_up().startswith(['OP', '}']):
             body.extend(self.parse_statement())
 
         closing_brace = self.tokens.check_and_pop('OP', '}')
-        return If(condition, body, Location.between(the_if, closing_brace))
+        return If(Location.between(the_if, closing_brace), condition, body)
 
     def _type_and_name(self):
         # Int a;
@@ -203,22 +216,22 @@ class _Parser:
 
         third_thing = self.tokens.check_and_pop('OP')
         if third_thing.value == ';':
-            return [Declaration(datatype, variable.name,
-                                Location.between(datatype, third_thing))]
+            return [Declaration(Location.between(datatype, third_thing),
+                                datatype, variable.name)]
 
         assert third_thing.value == '='
         initial_value = self.parse_expression()
         semicolon = self.tokens.check_and_pop('OP', ';')
-        return [Declaration(datatype, variable.name,
-                            Location.between(datatype, variable)),
-                Assignment(variable, initial_value,
-                           Location.between(variable, semicolon))]
+        return [Declaration(Location.between(datatype, variable),
+                            datatype, variable.name),
+                Assignment(Location.between(variable, semicolon),
+                           variable, initial_value)]
 
     def parse_return(self):
         the_return = self.tokens.check_and_pop('NAME', 'return')
         value = self.parse_expression()
         semicolon = self.tokens.check_and_pop('OP', ';')
-        return Return(value, Location.between(the_return, semicolon))
+        return Return(Location.between(the_return, semicolon), value)
 
     def parse_statement(self) -> list:
         # coming_up(1) and coming_up(2) work because there's always a
@@ -259,8 +272,8 @@ class _Parser:
             body.extend(self.parse_statement())
         closing_brace = self.tokens.check_and_pop('OP', '}')
 
-        return FunctionDef(name.name, args, returntype, body,
-                           Location.between(function_keyword, closing_brace))
+        return FunctionDef(Location.between(function_keyword, closing_brace),
+                           name.name, args, returntype, body)
 
     def parse_file(self):
         while True:
@@ -272,34 +285,10 @@ class _Parser:
             yield from self.parse_statement()
 
 
-def parse(tokens, sourcelines):
-    r"""Convert an iterable of tokens to AST nodes.
+def parse(tokens):
+    """Convert an iterable of tokens to AST nodes.
 
-    The sourcelines argument should be a list of the lines of code that
-    the tokens come from, without trailing \n's. The .splitlines()
-    string method is handy for this.
+    This returns an iterator.
     """
-    parser = _Parser(tokens, sourcelines)
+    parser = _Parser(tokens)
     return parser.parse_file()
-
-
-if __name__ == '__main__':
-    from weirdc import tokenizer
-    code = '''\
-    Int GLOBAL;
-    GLOBAL = 123;
-
-    function lel() {
-        // this does nothing
-    }
-
-    function main(String s) returns Int {
-        Int a = 1;
-        if a {
-            print("WOLO WOLO");
-        }
-        return 123;
-    }
-    '''
-    for node in parse(tokenizer.tokenize(code), code.splitlines()):
-        print(node)

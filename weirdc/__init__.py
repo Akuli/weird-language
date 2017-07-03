@@ -1,11 +1,8 @@
 import collections
 
 
-class Location(collections.namedtuple('Location', 'lineno start end')):
+class Location(collections.namedtuple('Location', 'start end lineno')):
     r"""Information about where a token or AST node comes from.
-
-    *lineno* is the line number as an integer. Note that the first line
-    is 1, not 0.
 
     The *start* and *end* should be integers that represent column
     counts, where the size of each tab is 1. For example, to highlight
@@ -16,10 +13,18 @@ class Location(collections.namedtuple('Location', 'lineno start end')):
 
         >>> "hello world"[3:None]
         'lo world'
+
+    *lineno* is the line number as an integer. Note that the first line
+    is 1, not 0. It defaults to 1 mostly for convenience with tests.
     """
 
     # don't allow random attributes
     __slots__ = ()
+
+    def __new__(cls, start, end, lineno=1):
+        # Python 3.5 and older or something requires this explicit super
+        # argument thing
+        return super(Location, cls).__new__(cls, start, end, lineno)
 
     @classmethod
     def between(cls, start, end):
@@ -36,10 +41,10 @@ class Location(collections.namedtuple('Location', 'lineno start end')):
 
         if start.lineno < end.lineno:
             # extend all the way to end of the start line
-            return Location(start.lineno, start.start, None)
+            return cls(start.start, None, start.lineno)
 
         assert start.lineno == end.lineno, "end is on a line before start"
-        return Location(start.lineno, start.start, end.end)
+        return cls(start.start, end.end, start.lineno)
 
 
 class CompileError(Exception):
@@ -54,8 +59,9 @@ class CompileError(Exception):
 
     # this throws away the end's lineno, but usually this is good enough
     def __init__(self, message: str, location: Location):
+        # TODO: use a self.location
+        self.start, self.end, self.lineno = location
         self.message = message
-        self.lineno, self.start, self.end = location
 
     # this isn't __str__ because this way the arguments don't need to be
     # passed to __init__()
