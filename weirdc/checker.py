@@ -1,6 +1,6 @@
-"""Check for errors and add decrefs.
+"""Check an AST tree for errors.
 
-This takes AST nodes and outputs its own nodes.
+This takes AST nodes and outputs nothing.
 """
 
 import collections
@@ -11,31 +11,35 @@ import string as string_module
 from weirdc import CompileError, ast, utils
 
 
-_node = functools.partial(utils.miniclass, __name__)
+_small_class = functools.partial(utils.miniclass, __name__)
 
 # if the type attribute is None, it means that the object is a class
-Type = _node('Type', ['name'])
+Type = _small_class('Type', ['name'])
 Type.type = None
 
 # "Int a = 1;" doesn't actually track the value of a, it just makes a an
 # Instance(INT_TYPE)
-Instance = _node('Instance', ['type'])
+Instance = _small_class('Instance', ['type'])
 
 # "hello", 123
-Literal = _node('Literal', ['constructor_args'], inherit=Instance)
+Literal = _small_class('Literal', ['constructor_args'], inherit=Instance)
 
 # a FunctionType object represents argument types and return values
 # note that FunctionType objects with same argument and return types
-# compare unequal (see weirdc._miniclass)
-FunctionType = _node(
+# compare unequal
+FunctionType = _small_class(
     'FunctionType', ['argtypes', 'returntype'], inherit=Type)
 
 INT_TYPE = Type('Int')
 STRING_TYPE = Type('String')     # TODO: rename to just Str?
 
-Variable = _node(
+Variable = _small_class(
     'Variable', ['id', 'value', 'defined_location'],
     default_attrs={'initialized': False, 'used_somewhere': False})
+
+
+Declaration = _small_class('Declaration', ['id', 'type'])
+Assignment = _small_class('Assignment', ['id', 'value'])
 
 
 # TODO: support some kind of inheritance? currently == is used for
@@ -100,7 +104,8 @@ class Scope:
             raise CompileError("no variable named '%s'" % name, location)
         if require_initialized and not var.initialized:
             # TODO: better error message
-            raise CompileError("variable '%s' is not initialized", location)
+            raise CompileError("variable '%s' is not initialized" % name,
+                               location)
 
         if mark_used:
             var.used_somewhere = True
@@ -120,10 +125,7 @@ class Scope:
         """Pseudo-run an expression."""
         if isinstance(expression, ast.Name):
             var = self._get_var(expression.name, expression.location)
-            if var.value is not None:
-                # we know its value already for some reason
-                return var.value
-            return Instance(var.type)
+            return var.value
 
         if isinstance(expression, ast.Integer):
             return Literal(INT_TYPE, [str(expression.value)])
@@ -140,16 +142,8 @@ class Scope:
                     "this is not a function", expression.function.location)
 
             args = list(map(self.evaluate, expression.args))
-
-            error = (len(args) != len(func.type.argtypes))
-            if not error:
-                # we got the correct number of arguments, so we need to
-                # check their types too
-                for arg, expected_type in zip(args, func.type.argtypes):
-                    if arg.type != expected_type:
-                        error = True
-            if error:
-                good = ', '.join(t.name for t in func.type.argtypes)
+            if [arg.type for arg in args] != func.type.argtypes:
+                good = ', '.join(type_.name for type_ in func.type.argtypes)
                 bad = ', '.join(arg.type.name for arg in args)
                 raise CompileError(
                     "should be {name}({}), not {name}({})"
@@ -164,8 +158,7 @@ class Scope:
             else:
                 return Instance(func.type.returntype)
 
-        else:
-            raise NotImplementedError(expression)
+        raise NotImplementedError(expression)
 
     def execute(self, statement):
         """Pseudo-run a statement."""
