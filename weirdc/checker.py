@@ -171,8 +171,6 @@ class Scope:
         elif isinstance(statement, ast.Assignment):
             assert isinstance(statement.target, ast.Name)  # TODO
 
-            # TODO: suggest "Int a = 123;" instead of "a = 123;" in the
-            # error message
             try:
                 variable = self._get_var(
                     statement.target.name, statement.target.location,
