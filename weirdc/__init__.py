@@ -54,40 +54,56 @@ class CompileError(Exception):
     ``"no variable named 'lol'"``.
 
     The *location* should be a :class:`.Location` object that represents
-    the line and column numbers where the error comes from.
+    the line and column numbers where the error comes from. It can also
+    be None, but it should be None **only** when the error doesn't come
+    from a specific location and there's something wrong with the whole
+    file, e.g., missing main function.
     """
 
     # this throws away the end's lineno, but usually this is good enough
-    def __init__(self, message, location):
-        # make CompileError(location, message) easy to debug
-        assert isinstance(location, Location)
+    def __init__(self, message, location=None):
+        # CompileError(location, message) must be easy to debug
+        assert location is None or isinstance(location, Location)
         self.message = message
         self.location = location
 
     # this isn't __str__ because this way the arguments don't need to be
     # passed to __init__()
-    def show(self, line, this_is='error'):
+    def show(self, filename, line=None, kind='error'):
         r"""Get a string suitable for displaying to the user.
+
+        *filename* will be displayed in the error message. Later it
+        could be something like '<console>' or '<stdin>' if the code
+        doesn't come from a file.
 
         *line* should be the line of code where this error occurred as a
         string with tabs expanded to 4 spaces. Trailing whitespace is
-        ignored.
+        ignored. It must be given if the *location* attribute is set,
+        and it must be omitted if *location* is None.
 
-        The error message will start with *this_is*; usually it should
-        be ``'error'`` or ``'warning'``.
+        The error message will start with *kind*; usually it should be
+        ``'error'`` or ``'warning'``.
 
         >>> code = "    bla bla bla"
         >>> error = CompileError("this is the 2nd bla", Location(8, 11, 123))
-        >>> print(error.show(code, "warning"))
-        warning on line 123: this is the 2nd bla
+        >>> print(error.show('test', code, 'warning'))
+        warning in file 'test', line 123: this is the 2nd bla
           bla bla bla
               ^^^
         >>> error = CompileError("missing semicolon", Location(15, 18, 123))
-        >>> print(error.show(code))
-        error on line 123: missing semicolon
+        >>> print(error.show('test', code))
+        error in file 'test', line 123: missing semicolon
           bla bla bla
                      ^^^
+        >>> print(CompileError("missing main() function").show('test'))
+        error in file 'test': missing main() function
+        >>>
         """
+        if self.location is None:
+            assert line is None
+            return "%s in file '%s': %s" % (kind, filename, self.message)
+
+        assert line is not None
         leading_spaces = len(line) - len(line.lstrip())
         line = line.strip()
 
@@ -97,9 +113,10 @@ class CompileError(Exception):
         else:
             end = self.location.end - leading_spaces
 
-        # this is indented with 2 spaces because pep8 line length
+        # this is indented weirdly because pep8 line length
         return '\n'.join([
-          '%s on line %d: %s' % (this_is, self.location.lineno, self.message),
-          '  ' + line,
-          '  ' + ' '*start + '^'*(end - start),
+            "%s in file '%s', line %d: %s"
+                % (kind, filename, self.location.lineno, self.message),
+            '  ' + line,
+            '  ' + ' '*start + '^'*(end - start),
         ])
