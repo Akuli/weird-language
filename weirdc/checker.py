@@ -3,7 +3,7 @@
 This takes AST nodes and outputs nothing.
 """
 
-import collections
+from collections import ChainMap, Counter
 import functools
 import itertools
 import string as string_module
@@ -34,12 +34,8 @@ INT_TYPE = Type('Int')
 STRING_TYPE = Type('String')     # TODO: rename to just Str?
 
 Variable = _small_class(
-    'Variable', ['id', 'value', 'defined_location'],
+    'Variable', ['value', 'defined_location'],
     default_attrs={'initialized': False, 'used_somewhere': False})
-
-
-Declaration = _small_class('Declaration', ['id', 'type'])
-Assignment = _small_class('Assignment', ['id', 'value'])
 
 
 # TODO: support some kind of inheritance? currently == is used for
@@ -53,13 +49,11 @@ class Scope:
         if parent is None:
             # this is the built-in scope
             self._variables = {}
-            self.counter = itertools.count(1)
             self.kind = 'builtin'
         else:
-            # defining a variable here must no go to the parent scope's
+            # defining a variable here must not go to the parent scope's
             # variables, that's why {} here
-            self._variables = collections.ChainMap({}, parent._variables)
-            self.counter = parent.counter
+            self._variables = ChainMap({}, parent._variables)
 
             if parent.kind == 'builtin':
                 self.kind = 'file'
@@ -104,8 +98,8 @@ class Scope:
             raise CompileError("no variable named '%s'" % name, location)
         if require_initialized and not var.initialized:
             # TODO: better error message
-            raise CompileError("variable '%s' is not initialized" % name,
-                               location)
+            raise CompileError(
+                "variable '%s' might not have a value yet" % name, location)
 
         if mark_used:
             var.used_somewhere = True
@@ -115,11 +109,12 @@ class Scope:
         defined_vars = self._variables.maps[0]
         for name, var in defined_vars.items():
             if not var.used_somewhere:
-                # TODO: get rid of the definition of this var
-                print(var.defined_location)
-                error = CompileError(
+                # TODO: this really should be a warning, not an error...
+                # currently there's no good way to remove this variable
+                # from the AST or emit warnings in general so we'll just
+                # error out here
+                raise CompileError(
                     "this variable isn't used anywhere", var.defined_location)
-                print(error.show('the code will appear here later', 'warning'))
 
     def evaluate(self, expression, *, allow_no_value=False):
         """Pseudo-run an expression."""
@@ -131,7 +126,9 @@ class Scope:
             return Literal(INT_TYPE, [str(expression.value)])
 
         if isinstance(expression, ast.String):
-            # TODO: use wchars to fix unicode issues
+            # TODO: use wchars to fix unicode issues, currently the
+            # length is too small with non-ASCII characters (assuming
+            # UTF-8 everywhere)
             return Literal(
                 STRING_TYPE, [str(expression.value), len(expression.value)])
 
@@ -158,7 +155,7 @@ class Scope:
             else:
                 return Instance(func.type.returntype)
 
-        raise NotImplementedError(expression)
+        raise NotImplementedError(expression)   # pragma: no cover
 
     def execute(self, statement):
         """Pseudo-run a statement."""
@@ -169,42 +166,45 @@ class Scope:
             vartype = self.evaluate(statement.type)
             assert vartype is not None
             self._variables[statement.name] = Variable(
-                next(self.counter), Instance(vartype), statement.location)
+                Instance(vartype), statement.location)
 
         elif isinstance(statement, ast.Assignment):
             assert isinstance(statement.target, ast.Name)  # TODO
 
             # TODO: suggest "Int a = 123;" instead of "a = 123;" in the
             # error message
-            variable = self._get_var(
-                statement.target.name, statement.target.location,
-                mark_used=False, require_initialized=False)
-
-            new_value = self.evaluate(statement.value)
-            if new_value is None:
-                # TODO: better error message
-                raise CompileError("this returns nothing",
-                                   statement.value.location)
-
-            if new_value.type != variable.value.type:
-                # when implementing this, remember to do something
-                # (disallow?) assigning to defined functions
-                correct_typename = _add_article(
-                    "function" if isinstance(variable.type, FunctionType)
-                    else variable.type.name)
-                wrong_typename = _add_article(
-                    "function" if isinstance(new_value.type, FunctionType)
-                    else new_type.name)
-
+            try:
+                variable = self._get_var(
+                    statement.target.name, statement.target.location,
+                    mark_used=False, require_initialized=False)
+            except CompileError as err:
                 raise CompileError(
-                    "%s needs to be %s, not %s" % (
-                        statement.target.name, correct_typename,
-                        wrong_typename),
+                    "you need to declare '{varname}' first, "
+                    'e.g. "{typename} {varname};"'
+                    .format(varname=statement.target.name,
+                            typename=self.evaluate(statement.value).type.name),
                     statement.location)
 
             if self._find_scope(statement.target.name).kind != 'inner':
+                assert isinstance(variable.value.type, FunctionType)
+                raise CompileError("functions can't be changed like this",
+                                   statement.target.location)
+
+            new_value = self.evaluate(statement.value)
+            if new_value.type != variable.value.type:
+                correct_typename = utils.add_article(
+                    "function" if isinstance(variable.value.type, FunctionType)
+                    else variable.value.type.name)
+                wrong_typename = utils.add_article(
+                    "function" if isinstance(new_value.type, FunctionType)
+                    else new_value.type.name)
+
+                # FIXME: it's possible to end up with something like
+                # "myvar needs to be a function, not a function"
                 raise CompileError(
-                    "sorry, global variables aren't supported yet :(",
+                    "'%s' needs to be %s, not %s" % (
+                        statement.target.name, correct_typename,
+                        wrong_typename),
                     statement.location)
 
             self._variables[statement.target.name].initialized = True
@@ -233,19 +233,28 @@ class Scope:
     #   function stuff() { ... }
     def declare_function(self, function):
         self._error_if_defined(function.name, function)
+        if function.name == 'main':
+            # TODO: create equivalents of sys.exit() and sys.argv, then
+            # recommend them here
+            if function.returntype != None:
+                raise CompileError("main() must not return anything",
+                                   function.location)
+            if function.args:
+                raise CompileError("main() must not take arguments")
 
-        # TODO: handle these
-        assert function.returntype is None
-        argtypes = [self.evaluate(argtype)
-                    for argtype, name in function.args]
+        assert function.returntype is None  # TODO: handle this
 
-        # this must be done before going through the body because
-        # otherwise this passes silently:
-        #   function lel() { Int lel = 123; }
+        argnames = [name for argtype, name in function.args]
+        for arg in argnames:
+            if argnames.count(arg) > 1:
+                raise CompileError(
+                    "there are %d arguments named '%s'"
+                    % (argnames.count(arg), arg), function.location)
+
+        argtypes = [self.evaluate(argtype) for argtype, name in function.args]
         functype = FunctionType(function.name, argtypes, None)
         self._variables[function.name] = Variable(
-            next(self.counter), Instance(functype), function.location,
-            initialized=True)
+            Instance(functype), function.location, initialized=True)
 
     def execute_function_def(self, function):
         scope = Scope(self)
@@ -255,21 +264,30 @@ class Scope:
 
 
 _BUILTIN_SCOPE = Scope(None)
-_BUILTIN_SCOPE._variables['Int'] = Variable(
-    next(_BUILTIN_SCOPE.counter), INT_TYPE, None, initialized=True)
+_BUILTIN_SCOPE._variables['Int'] = Variable(INT_TYPE, None, initialized=True)
 _BUILTIN_SCOPE._variables['String'] = Variable(
-    next(_BUILTIN_SCOPE.counter), STRING_TYPE, None, initialized=True)
+    STRING_TYPE, None, initialized=True)
 
 
 def check(ast_nodes):
+    for node in ast_nodes:
+        if not isinstance(node, ast.FunctionDef):
+            # TODO: allow global vars and get rid of main functions
+            raise CompileError("only function definitions can be here",
+                               node.location)
+
     global_scope = Scope(_BUILTIN_SCOPE)
+
+    if 'main' not in (func.name for func in ast_nodes):
+        raise CompileError("there's no main() function", None)
 
     # all functions need to be declared before using them, so we'll just
     # forward-declare everything
-    for function in ast_nodes:
-        global_scope.declare_function(function)
-    for function in ast_nodes:
-        global_scope.execute_function_def(function)
+    for func in ast_nodes:
+        global_scope.declare_function(func)
+
+    for func in ast_nodes:
+        global_scope.execute_function_def(func)
 
 
 if __name__ == '__main__':
@@ -294,8 +312,11 @@ if __name__ == '__main__':
             ast_tree = list(ast.parse(tokens))
             check(ast_tree)
         except CompileError as error:
-            line = code.splitlines()[error.lineno-1]
-            print(error.show(line))
+            if error.location is None:
+                print(error.show('test'))
+            else:
+                line = code.splitlines()[error.location.lineno-1]
+                print(error.show('test', line))
         except Exception:
             traceback.print_exc()
         else:

@@ -61,7 +61,7 @@ class CompileError(Exception):
     """
 
     # this throws away the end's lineno, but usually this is good enough
-    def __init__(self, message, location=None):
+    def __init__(self, message, location):
         # CompileError(location, message) must be easy to debug
         assert location is None or isinstance(location, Location)
         self.message = message
@@ -95,7 +95,8 @@ class CompileError(Exception):
         error in file 'test', line 123: missing semicolon
           bla bla bla
                      ^^^
-        >>> print(CompileError("missing main() function").show('test'))
+        >>> error = CompileError("missing main() function", None)
+        >>> print(error.show('test'))
         error in file 'test': missing main() function
         >>>
         """

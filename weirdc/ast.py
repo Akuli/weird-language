@@ -169,7 +169,7 @@ class _Parser:
             result = self.parse_parentheses()
         else:
             raise CompileError(
-                "this should be 'variable name, string, integer or '('",
+                "this should be variable name, string, integer or '('",
                 coming_up.location)
 
         # check for function calls, this is a while loop to allow

@@ -17,13 +17,13 @@ except ImportError:
 class Utils:
 
     @contextlib.contextmanager
-    def error_at(self, *location_args, message=None):
+    def error_at(self, *location_args, msg=None):
         with pytest.raises(weirdc.CompileError) as err:
             yield
 
+        if msg is not None:
+            assert err.value.message == msg
         assert err.value.location == weirdc.Location(*location_args)
-        if message is not None:
-            assert err.value.message == message
 
 
 @pytest.fixture
