@@ -33,24 +33,24 @@ def test_unused_vars(error_at):
 
     assert check_code('''\
     function main() {
-        Int lol;
+        Bool lol;
+    }
+    ''',
+    [("this variable isn't used anywhere", 8, 17, 2)]) == [empty_main]
+
+    assert check_code('''\
+    function main() {
+        Bool lol = TRUE;
     }
     ''',
     [("this variable isn't used anywhere", 8, 16, 2)]) == [empty_main]
 
     assert check_code('''\
     function main() {
-        Int lol = 123;
+        Bool lol;
+        lol = TRUE;
     }
-    ''',
-    [("this variable isn't used anywhere", 8, 15, 2)]) == [empty_main]
-
-    assert check_code('''\
-    function main() {
-        Int lol;
-        lol = 123;
-    }
-    ''', [("this variable isn't used anywhere", 8, 16, 2)]) == [empty_main]
+    ''', [("this variable isn't used anywhere", 8, 17, 2)]) == [empty_main]
 
 
 def test_nothing_returned(error_at):
@@ -92,17 +92,17 @@ def test_wrong_args(error_at):
 
 
 def test_already_defined(error_at):
-    with error_at(26, 33, 2, msg="there's already a function named 'lol'"):
+    with error_at(26, 34, 2, msg="there's already a function named 'lol'"):
         check_code('''\
         function lol() { }
-        function main() { Int lol = 123; }
+        function main() { Bool lol = TRUE; }
         ''')
 
-    with error_at(12, 22, 3, msg="there's already a variable named 'lol'"):
+    with error_at(12, 20, 3, msg="there's already a variable named 'lol'"):
         check_code('''\
         function main() {
-            Int lol = 123;
-            String lol = "well lulz";
+            Bool lol = TRUE;
+            Bool lol = FALSE;
         }
         ''')
 
@@ -128,19 +128,19 @@ def test_bad_variable(error_at):
         ast.FunctionDef(Location(4, None), 'main', [], None, [])
     ]
 
-    with error_at(12, 24, 2, msg=("you need to declare 'thing' first, "
-                                  'e.g. "Int thing;"')):
+    with error_at(12, 25, 2, msg=("you need to declare 'thing' first, "
+                                  'e.g. "Bool thing;"')):
         check_code('''\
         function main() {
-            thing = 123;
+            thing = TRUE;
         }
         ''')
 
 
 def test_wrong_type(error_at):
-    with error_at(30, 50, msg="'wut' needs to be an Int, not a String"):
+    with error_at(31, 41, msg="'wut' needs to be a Bool, not an Int"):
         check_code('''\
-        function main() { Int wut = "this is lol"; }
+        function main() { Bool wut = 123; }
         ''')
 
 

@@ -29,6 +29,10 @@ FunctionType = _small_class(
 
 INT_TYPE = Type('Int')
 STRING_TYPE = Type('String')     # TODO: rename to just Str or maybe Text?
+BOOL_TYPE = Type('Bool')
+
+TRUE = Instance(BOOL_TYPE)
+FALSE = Instance(BOOL_TYPE)
 
 # used_by is a list of statement nodes that do something with this variable
 # the [] is copied when a new Variable object is created, see utils.py
@@ -334,10 +338,18 @@ class Scope:
         self.output.append(function)
 
 
+_builtin_vars = {
+    'Int': INT_TYPE,
+    'String': STRING_TYPE,
+    'Bool': BOOL_TYPE,
+    'TRUE': TRUE,
+    'FALSE': FALSE,
+}
+
 _BUILTIN_SCOPE = Scope(None, None)
-_BUILTIN_SCOPE._variables['Int'] = Variable(INT_TYPE, None, initialized=True)
-_BUILTIN_SCOPE._variables['String'] = Variable(
-    STRING_TYPE, None, initialized=True)
+_BUILTIN_SCOPE._variables.update({
+    name: Variable(value, None, initialized=True)
+    for name, value in _builtin_vars.items()})
 
 
 def check(ast_nodes, warn_callback):

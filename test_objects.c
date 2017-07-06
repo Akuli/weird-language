@@ -7,6 +7,7 @@
 #include "objects/list.h"
 #include "objects/integer.h"
 #include "objects/string.h"
+#include "objects/bool.h"
 
 #define assert_streq(a, b) assert(strcmp((a), (b)) == 0)
 
@@ -132,14 +133,48 @@ void test_strings(void) {
     weirdobject_decref(z);
 }
 
+void test_bools(void) {
+	START_TEST;
+	struct WeirdObject *a = weirdbool_fromint(1);
+	struct WeirdObject *b = weirdbool_fromint(1);
+	struct WeirdObject *c = weirdbool_fromint(0);
+
+	assert(a == b);
+	assert(a != c);
+	assert(!(a->use_refcount));
+	assert(!(c->use_refcount));
+	assert(weirdbool_asint(a));
+	assert(!weirdbool_asint(c));
+
+	// these shouldn't do anything
+	for (int i = 0; i < 100; i++) {
+		weirdobject_incref(a);
+		weirdobject_incref(b);
+		weirdobject_incref(c);
+		weirdobject_decref(c);
+		weirdobject_decref(c);
+	}
+
+	assert(a == b);
+	assert(a != c);
+	assert(!(a->use_refcount));
+	assert(!(c->use_refcount));
+	assert(weirdbool_asint(a));
+	assert(!weirdbool_asint(c));
+}
+
 
 typedef void (*TestFunc)(void);
-TestFunc tests[] = { test_refcounts, test_lists, test_integers, test_strings };
+TestFunc tests[] = {
+	test_refcounts, test_lists, test_integers, test_strings, test_bools };
 
 int main(void)
 {
+	printf("initializing...\n");
+	weirdbool_init();
 	for (unsigned int i = 0; i < sizeof(tests)/sizeof(TestFunc); i++)
 		tests[i]();
-	printf("\nall OK\n");
+	printf("\nall OK, finalizing...\n");
+	weirdbool_finalize();
 	return 0;
 }

@@ -12,6 +12,9 @@
  *		Name of the type of this object as a string.
  * 		This will probably change later.
  *
+ * 	int use_refcount;
+ * 		Set this to 0 to disable reference counting. 1 by default.
+ *
  * 	size_t refcount;
  * 		Number of references to this object. This is 1 by default.
  *
@@ -26,6 +29,7 @@
  */
 struct WeirdObject {
 	char *typename;
+	int use_refcount;
 	size_t refcount;
 	void (*destructor)(void *);
 	void *data;
@@ -44,12 +48,21 @@ struct WeirdObject *
 weirdobject_new(char *typename, void (*destructor)(void *), void *data);
 
 /**
- * Increment reference count.
+ * Free an object and everything associated with it.
+ *
+ * Note that :func:`weirdobject_decref` calls this automatically if
+ * reference counting is used, so this is only useful for things that
+ * are not reference counted.
+ */
+void weirdobject_destroy(struct WeirdObject *me);
+
+/**
+ * Increment reference count if ``use_refcount`` is nonzero.
  */
 void weirdobject_incref(struct WeirdObject *me);
 
 /**
- * Decrement reference count.
+ * Decrement reference count if ``use_refcount`` is nonzero.
  *
  * The object is destroyed if the reference count becomes 0.
  */

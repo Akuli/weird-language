@@ -1,5 +1,5 @@
 CFLAGS += -Wall -Wextra -Wno-unused-parameter -std=c99
-OBJS = objects/object.o objects/list.o objects/integer.o objects/string.o test_objects.o
+OBJS = objects/object.o objects/list.o objects/integer.o objects/string.o objects/bool.o test_objects.o
 
 test_objects: $(OBJS)
 	cc $(CFLAGS) $(OBJS) -o test_objects
