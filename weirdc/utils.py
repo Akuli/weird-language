@@ -16,8 +16,8 @@ def miniclass(modulename, name, fields, *, inherit=object, default_attrs=None):
     and not iterable.
 
     The ``modulename`` should be the name of the module that called
-    this for the ``__repr__``. Only the last part of it will be used, so
-    ``weirdc.utils`` turns into just ``utils``. 
+    this. Its last part will be used in ``__repr__`` and the
+    ``__module__`` attribute of the class will be set to it.
 
     If *default_attrs* is specified, it should be a ``{name: value}``
     dictionary of attributes. They can be customized with keyword
@@ -27,8 +27,6 @@ def miniclass(modulename, name, fields, *, inherit=object, default_attrs=None):
     The inherited fields need to be given as initialization arguments
     before the fields specific to the new class.
     """
-    modulename = modulename.split('.')[-1]
-
     # __slots__ can be a list, but mutating it afterwards doesn't change
     # anything so it just confuses stuff
     fields = tuple(fields)
@@ -47,12 +45,17 @@ def miniclass(modulename, name, fields, *, inherit=object, default_attrs=None):
         for name, value in zip(all_fields, args):
             setattr(self, name, value)
         for name, value in collections.ChainMap(kwargs, default_attrs).items():
+            # [] as a default value sucks as we all know
+            # TODO: handle e.g. dicts later if needed
+            if isinstance(value, list):
+                value = value.copy()
             setattr(self, name, value)
 
     # not really necessary, but makes debugging a lot easier
     def dunder_repr(self):
         values = [repr(getattr(self, name)) for name in all_fields]
-        return '%s.%s(%s)' % (modulename, name, ', '.join(values))
+        return '%s.%s(%s)' % (type(self).__module__.split('.')[-1],
+                              type(self).__name__, ', '.join(values))
 
     def dunder_eq(self, other):
         if not isinstance(other, type(self)):
@@ -64,6 +67,7 @@ def miniclass(modulename, name, fields, *, inherit=object, default_attrs=None):
         return True
 
     return type(name, (inherit,), {
+        '__module__': modulename,
         '__slots__': fields + tuple(default_attrs),
         '__init__': dunder_init,
         '__repr__': dunder_repr,

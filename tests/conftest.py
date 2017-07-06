@@ -12,20 +12,20 @@ except ImportError:
     import weirdc
 
 
-# this is the best way to share utility functions with test modules i
-# found, it looks like java but it works
-class Utils:
-
+@pytest.fixture
+def error_at():
     @contextlib.contextmanager
-    def error_at(self, *location_args, msg=None):
+    def inner(*location_args, msg=None):
+        if location_args == (None,):
+            location = None
+        else:
+            location = weirdc.Location(*location_args)
+
         with pytest.raises(weirdc.CompileError) as err:
             yield
 
         if msg is not None:
             assert err.value.message == msg
-        assert err.value.location == weirdc.Location(*location_args)
+        assert err.value.location == location
 
-
-@pytest.fixture
-def utils():
-    return Utils()
+    return inner

@@ -1,10 +1,32 @@
-"""The abstract syntax tree."""
+"""The abstract syntax tree elements and parser."""
 
 import collections
 import contextlib
 import functools
 
 from weirdc import CompileError, Location, utils
+
+
+def _node(name, fields):
+    return utils.miniclass(__name__, name, ['location'] + fields)
+
+# expressions
+Name = _node('Name', ['name'])
+Integer = _node('Integer', ['value'])
+String = _node('String', ['value'])
+FunctionCall = _node('FunctionCall', ['function', 'args'])
+
+# statements
+ExpressionStatement = _node('ExpressionStatement', ['expression'])
+Declaration = _node('Declaration', ['type', 'name'])
+Assignment = _node('Assignment', ['target', 'value'])
+If = _node('If', ['condition', 'body'])
+FunctionDef = _node('FunctionDef', ['name', 'args', 'returntype', 'body'])
+Return = _node('Return', ['value'])
+
+# this doesn't really have a location, so we can't use _node()
+# see also decreffer.py
+#DecRef = utils.miniclass(__name__, 'DecRef', [...])
 
 
 # this kind of abuses EOFError... feels good, i'm evil >:D MUHAHAHAA!!!
@@ -56,20 +78,6 @@ class _HandyDandyTokenIterator:
 
         return self.pop()
 
-
-def _node(name, fields):
-    return utils.miniclass(__name__, name, ['location'] + fields)
-
-Name = _node('Name', ['name'])
-Integer = _node('Integer', ['value'])
-String = _node('String', ['value'])
-FunctionCall = _node('FunctionCall', ['function', 'args'])
-ExpressionStatement = _node('ExpressionStatement', ['expression'])
-Declaration = _node('Declaration', ['type', 'name'])
-Assignment = _node('Assignment', ['target', 'value'])
-If = _node('If', ['condition', 'body'])
-FunctionDef = _node('FunctionDef', ['name', 'args', 'returntype', 'body'])
-Return = _node('Return', ['value'])
 
 _KEYWORDS = {'return', 'if'}
 

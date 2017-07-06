@@ -20,15 +20,15 @@ def fake_keyword():
     ast._KEYWORDS.remove('fake')
 
 
-def test_parse_name(fake_keyword, utils):
+def test_parse_name(fake_keyword, error_at):
     assert get_ast('hello;') == [
         ast.ExpressionStatement(
             Location(0, 6),
             ast.Name(Location(0, 5), 'hello'))
     ]
 
-    with utils.error_at(0, 4, msg=("fake is not a valid variable name "
-                                   "because it has a special meaning")):
+    with error_at(0, 4, msg=("fake is not a valid variable name "
+                             "because it has a special meaning")):
         get_ast('fake;')
 
 
@@ -91,7 +91,7 @@ def test_function_calls():
     ]
 
 
-def test_trailing_commas(utils):
+def test_trailing_commas(error_at):
     assert get_ast('lol(1,);\n'
                    'lol(1, 2, 3,);') == [
         ast.ExpressionStatement(
@@ -110,16 +110,16 @@ def test_trailing_commas(utils):
                  ast.Integer(Location(10, 11, 2), '3')])),
     ]
 
-    with utils.error_at(4, 5, msg="don't put a ',' here"):
+    with error_at(4, 5, msg="don't put a ',' here"):
         get_ast('lol(,)')
-    with utils.error_at(4, 5, msg="don't put a ',' here"):
+    with error_at(4, 5, msg="don't put a ',' here"):
         get_ast('lol(,,)')
-    with utils.error_at(13, 15, msg="two ',' characters"):
+    with error_at(13, 15, msg="two ',' characters"):
         get_ast('lol(something,,)')
 
     # this doesn't matter much because it's unlikely that anyone will
     # accidentally put 3 commas next to each other
-    with utils.error_at(13, 15, msg="two ',' characters"):
+    with error_at(13, 15, msg="two ',' characters"):
         get_ast('lol(something,,,)')
 
 
@@ -257,24 +257,24 @@ def test_function_defs():
     ]
 
 
-def test_end_of_file(utils):
+def test_end_of_file(error_at):
     # i'm not sure if pointing at the first ( or { is the right thing to
     # do when braces are nested like this, but it's easier to implement
     # and pypy does it so i think its ok
-    with utils.error_at(5, 6, msg="missing ')'"):
+    with error_at(5, 6, msg="missing ')'"):
         get_ast('thing(\n'
                 '\tstuff()')
 
-    with utils.error_at(17, 18, msg="missing '}'"):
+    with error_at(17, 18, msg="missing '}'"):
         get_ast('function thing() {\n'
                 '\tif (stuff) {\n'
                 '\t\tthingies;\n'
                 '}')
 
-    with utils.error_at(17, 18, msg="missing '}'"):
+    with error_at(17, 18, msg="missing '}'"):
         get_ast('function thing() { if (stuff) {')
 
     # yes, this is supposed to underline exactly 3 characters after the
     # last token
-    with utils.error_at(14, 17, msg="unexpected end of file"):
+    with error_at(14, 17, msg="unexpected end of file"):
         get_ast('function thing')
