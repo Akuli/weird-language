@@ -136,8 +136,6 @@ class Scope:
             for statement in var.used_by:
                 if (isinstance(statement, ast.Assignment)
                         and isinstance(statement.value, ast.FunctionCall)):
-                    # this isn't tested yet because functions can't
-                    # return anything yet... lol
                     # unused_var = lel();   // replace with just lel();
                     replacement = ExpressionStatement(None, statement.value)
                     self.output[self.output.index(statement)] = replacement
