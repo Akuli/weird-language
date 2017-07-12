@@ -33,129 +33,150 @@ def test_unused_vars(error_at):
 
     assert check_code('''\
     function main() {
-        Bool lol;
-    }
-    ''',
-    [("this variable isn't used anywhere", 8, 17, 2)]) == [empty_main]
-
-    assert check_code('''\
-    function main() {
-        Bool lol = TRUE;
+        Bool lol
     }
     ''',
     [("this variable isn't used anywhere", 8, 16, 2)]) == [empty_main]
 
     assert check_code('''\
     function main() {
-        Bool lol;
-        lol = TRUE;
+        Bool lol = TRUE
     }
-    ''', [("this variable isn't used anywhere", 8, 17, 2)]) == [empty_main]
+    ''',
+    [("this variable isn't used anywhere", 8, 16, 2)]) == [empty_main]
+
+    assert check_code('''\
+    function main() {
+        Bool lol
+        lol = TRUE
+    }
+    ''', [("this variable isn't used anywhere", 8, 16, 2)]) == [empty_main]
 
 
 def test_nothing_returned(error_at):
     check_code('''\
     function returnsNothing() { }
-    function main() { returnsNothing(); }
+    function main() {
+        returnsNothing()
+    }
     ''')
-    with error_at(38, 54, 2, msg="this returns nothing"):
+    with error_at(24, 40, 3, msg="this returns nothing"):
         check_code('''\
         function returnsNothing() { }
-        function main() { Int thing = returnsNothing(); }
+        function main() {
+            Int thing = returnsNothing()
+        }
         ''')
 
 
 def test_not_function(error_at):
-    with error_at(26, 33, msg="this is not a function"):
+    with error_at(12, 19, 2, msg="this is not a function"):
         check_code('''\
-        function main() { "hello"(); }
+        function main() {
+            "hello"()
+        }
         ''')
 
-    with error_at(26, 29, msg="this is not a function"):
+    with error_at(12, 15, 2, msg="this is not a function"):
         check_code('''\
-        function main() { 123(); }
+        function main() {
+            123()
+        }
         ''')
 
 
 def test_wrong_args(error_at):
-    with error_at(26, 33, 2, msg="should be thing(Int), not thing()"):
+    with error_at(12, 19, 3, msg="should be thing(Int), not thing()"):
         check_code('''\
         function thing(Int i) { }
-        function main() { thing(); }
+        function main() {
+            thing()
+        }
         ''')
 
-    with error_at(26, 36, 2, msg="should be thing(String), not thing(Int)"):
+    with error_at(12, 22, 3, msg="should be thing(String), not thing(Int)"):
         check_code('''\
         function thing(String s) { }
-        function main() { thing(123); }
+        function main() {
+            thing(123)
+        }
         ''')
 
 
 def test_already_defined(error_at):
-    with error_at(26, 34, 2, msg="there's already a function named 'lol'"):
+    with error_at(12, 20, 3, msg="there's already a function named 'lol'"):
         check_code('''\
         function lol() { }
-        function main() { Bool lol = TRUE; }
+        function main() {
+            Bool lol = TRUE
+        }
         ''')
 
     with error_at(12, 20, 3, msg="there's already a variable named 'lol'"):
         check_code('''\
         function main() {
-            Bool lol = TRUE;
-            Bool lol = FALSE;
+            Bool lol = TRUE
+            Bool lol = FALSE
         }
         ''')
 
 
 # undefined, undeclared and uninitialized variable tests are all here
 def test_bad_variable(error_at):
-    with error_at(26, 29, msg="no variable named 'lol'"):
+    with error_at(12, 15, 2, msg="no variable named 'lol'"):
         check_code('''\
-        function main() { lol; }
+        function main() {
+            lol
+        }
         ''',
-        [('this does nothing', 26, 30, 1)])
+        [('this does nothing', 12, 15, 2)])
 
     assert check_code('''\
     function main() {
-        Int lol = 123;
-        lol;
+        Int lol = 123
+        lol
     }
     ''', [
-        ("this does nothing", 8, 12, 3),
+        ("this does nothing", 8, 11, 3),
         ("this variable isn't used anywhere", 8, 15, 2),
     ]) == [
         # the whole function body should be removed at this point
         ast.FunctionDef(Location(4, None), 'main', [], None, [])
     ]
 
-    with error_at(12, 25, 2, msg=("you need to declare 'thing' first, "
-                                  'e.g. "Bool thing;"')):
+    with error_at(12, 24, 2, msg=("you need to declare 'thing' first, "
+                                  "e.g. 'Bool thing'")):
         check_code('''\
         function main() {
-            thing = TRUE;
+            thing = TRUE
         }
         ''')
 
 
 def test_wrong_type(error_at):
-    with error_at(31, 41, msg="'wut' needs to be a Bool, not an Int"):
+    with error_at(17, 26, 2, msg="'wut' needs to be a Bool, not an Int"):
         check_code('''\
-        function main() { Bool wut = 123; }
+        function main() {
+            Bool wut = 123
+        }
         ''')
 
 
 def test_function_assign(error_at):
-    with error_at(26, 29, 2, msg="functions can't be changed like this"):
+    # TODO: this error message kind of sucks
+    with error_at(12, 15, 3, msg="functions can't be changed like this"):
         check_code('''\
         function lel() { }
-        function main() { lel = anything_really; }
+        function main() {
+            lel = anything_really
+        }
         ''')
 
 
 def test_no_globals(error_at):
-    with error_at(8, 16, 1, msg="only function definitions can be here"):
+    with error_at(8, 15, 1, msg="only function definitions can be here"):
         check_code('''\
-        Int lel;
+        Int lel
         function main() { }
         ''')
 
@@ -173,7 +194,7 @@ def test_repeated_arguments(error_at):
     with error_at(8, None, msg="there are 2 arguments named 'lel'"):
         check_code('''\
         function thing(Int lel, Int lel) {
-            whatever;
+            whatever
         }
         function main() { }
         ''')
@@ -190,8 +211,8 @@ def test_not_a_type(error_at):
                                   "not String instances")):
         check_code('''\
         function main() {
-            String lel = "hello";
-            lel lulz = 123;
+            String lel = "hello"
+            lel lulz = 123
         }
         ''')
 
@@ -200,14 +221,18 @@ def test_not_a_type(error_at):
     # types, so no need to validate argument types and return types
 
 
-# TODO: a plain 'return;' to get out of a function that returns nothing
+# TODO: a plain 'return' to get out of a function that returns nothing
 # TODO: warn about statements after a return
 # TODO: make sure that at least one return statement runs if the
 #       function is supposed to return something
 def test_returns(error_at):
-    with error_at(39, 54, msg=("this function should return an Int, "
-                               "not a String")):
+    with error_at(12, 26, 2, msg=("this function should return an Int, "
+                                  "not a String")):
         check_code('''\
-        function thing() returns Int { return "hello"; }
-        function main() { thing(); }
+        function thing() returns Int {
+            return "hello"
+        }
+        function main() {
+            thing()
+        }
         ''')

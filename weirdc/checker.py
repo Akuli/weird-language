@@ -136,12 +136,12 @@ class Scope:
             for statement in var.used_by:
                 if (isinstance(statement, ast.Assignment)
                         and isinstance(statement.value, ast.FunctionCall)):
-                    # unused_var = lel();   // replace with just lel();
-                    replacement = ExpressionStatement(None, statement.value)
-                    self.output[self.output.index(statement)] = replacement
+                    # unused_var = lel()   // replace with just lel()
+                    self.output[self.output.index(statement)] = statement.value
                 else:
-                    # String s;              // goodbye, we don't need you
-                    # String s = "literal";  // just "literal"; would be no-op
+                    # we don't need statements like this at all
+                    #   String s
+                    #   String s = "literal"
                     self.output.remove(statement)
 
     def evaluate(self, expression, source_statement, *, allow_no_value=False):
@@ -206,7 +206,6 @@ class Scope:
             var = Variable(Instance(vartype), statement.location,
                            used_by=[statement])
             self._variables[statement.name] = var
-            self.output.append(statement)
 
         elif isinstance(statement, ast.Assignment):
             assert isinstance(statement.target, ast.Name)  # TODO
@@ -219,7 +218,7 @@ class Scope:
                 value = self.evaluate(statement.value, statement)
                 raise CompileError(
                     "you need to declare '{varname}' first, "
-                    'e.g. "{typename} {varname};"'
+                    "e.g. '{typename} {varname}'"
                     .format(typename=value.type.name,
                             varname=statement.target.name),
                     statement.location)
@@ -249,7 +248,6 @@ class Scope:
                     statement.location)
 
             self._variables[statement.target.name].initialized = True
-            self.output.append(statement)
 
         elif isinstance(statement, ast.If):
             subscope = Scope(self, self.returntype)
@@ -257,24 +255,12 @@ class Scope:
                 substatement.execute(statement)
             subscope.check_unused_vars()
             statement.body = subscope.output
-            self.output.append(statement)
 
         elif isinstance(statement, ast.FunctionDef):
             assert self.kind != 'builtin'
             raise CompileError(
                 "cannot define a function inside a function",
                 statement.location)
-
-        elif isinstance(statement, ast.ExpressionStatement):
-            if isinstance(statement.expression, ast.FunctionCall):
-                self.evaluate(statement.expression, statement,
-                              allow_no_value=True)
-                self.output.append(statement)
-            else:
-                # the evaluate() raises errors if something's wrong
-                self.warn("this does nothing", statement.location)
-                self.evaluate(statement.expression, None)
-                # don't append it to self.output
 
         elif isinstance(statement, ast.Return):
             value = self.evaluate(statement.value, statement)
@@ -284,10 +270,17 @@ class Scope:
                     % (utils.add_article(self.returntype.name),
                        utils.add_article(value.type.name)),
                     statement.location)
-            self.output.append(statement)
 
-        else:     # pragma: no cover
-            raise NotImplementedError(statement)
+        elif isinstance(statement, ast.FunctionCall):
+            self.evaluate(statement, statement, allow_no_value=True)
+
+        else:
+            assert isinstance(statement, (ast.Name, ast.Integer, ast.String))
+            self.warn("this does nothing", statement.location)
+            self.evaluate(statement, None)   # raises errors if needed
+            return   # don't append it to self.output
+
+        self.output.append(statement)
 
     # TODO: allow defining functions after using them
     #   function thingy() { stuff(); }
@@ -340,8 +333,8 @@ _builtin_vars = {
     'Int': INT_TYPE,
     'String': STRING_TYPE,
     'Bool': BOOL_TYPE,
-    'TRUE': TRUE,
-    'FALSE': FALSE,
+    'TRUE': Instance(BOOL_TYPE),
+    'FALSE': Instance(BOOL_TYPE),
 }
 
 _BUILTIN_SCOPE = Scope(None, None)

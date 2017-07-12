@@ -10,23 +10,25 @@ from weirdc import CompileError, Location, utils
 def _node(name, fields):
     return utils.miniclass(__name__, name, ['location'] + fields)
 
-# expressions
+# expressions that can also be statements
+# only FunctionCall makes sense as a statement, so other statements
+# are removed in checker.py
 Name = _node('Name', ['name'])
 Integer = _node('Integer', ['value'])
 String = _node('String', ['value'])
 FunctionCall = _node('FunctionCall', ['function', 'args'])
 
-# statements
-ExpressionStatement = _node('ExpressionStatement', ['expression'])
+# these aren't valid expressions
 Declaration = _node('Declaration', ['type', 'name'])
 Assignment = _node('Assignment', ['target', 'value'])
 If = _node('If', ['condition', 'body'])
-FunctionDef = _node('FunctionDef', ['name', 'args', 'returntype', 'body'])
 Return = _node('Return', ['value'])
+FunctionDef = _node('FunctionDef', ['name', 'args', 'returntype', 'body'])
 
-# this doesn't really have a location, so we can't use _node()
-# see also decreffer.py
-#DecRef = utils.miniclass(__name__, 'DecRef', [...])
+# these doesn't have locations, so we can't use _node()
+# TODO: add these everywhere in decreffer.py
+IncRef = utils.miniclass(__name__, 'IncRef', ['varname'])
+DecRef = utils.miniclass(__name__, 'DecRef', ['varname'])
 
 
 # this kind of abuses EOFError... feels good, i'm evil >:D MUHAHAHAA!!!
@@ -64,10 +66,6 @@ class _HandyDandyTokenIterator:
     # that way this can be used in try/except
     def check_and_pop(self, kind, value=None):
         if value is not None and self.coming_up().value != value:
-            # TODO: currently forgetting a semicolon like this...
-            #     function something() { lel() }
-            # ...results in an error message which says that the '}'
-            # should be ';'
             raise CompileError("this should be '%s'" % value,
                                self.coming_up().location)
 
@@ -78,12 +76,21 @@ class _HandyDandyTokenIterator:
 
         return self.pop()
 
+    # this skips everything except the first NEWLINE when there are
+    # multiple NEWLINE tokens with nothing in between
+    def pop_newline(self):
+        try:
+            self.check_and_pop('NEWLINE')
+            while self.coming_up().kind == 'NEWLINE':
+                self.pop()
+        except EOFError:
+            # no trailing newline at the end of file
+            pass
+
 
 _KEYWORDS = {'return', 'if'}
 
 
-# FIXME: this should produce similar (overlapping) nodes for "Int a = 1;"
-# and "Int a; a = 1;" because it's simpler and checker.py relies on it
 class _Parser:
 
     def __init__(self, tokens):
@@ -110,21 +117,13 @@ class _Parser:
         token = self.tokens.check_and_pop('STRING')
         return String(token.location, token.value[1:-1])
 
-    @contextlib.contextmanager
-    def _parentheses(self, start, stop):
-        start_token = self.tokens.check_and_pop('OP', start)
-        try:
-            yield start_token
-        except EOFError:
-            raise CompileError("missing '%s'" % stop, start_token.location)
-
     def parse_parentheses(self):
         # ( expr )
         # parentheses don't have a node type because they just change
         # the evaluation order
-        with self._parentheses('(', ')'):
-            content = self.parse_expression()
-            self.tokens.check_and_pop('OP', ')')
+        self.tokens.check_and_pop('OP', '(')
+        content = self.parse_expression()
+        self.tokens.check_and_pop('OP', ')')
         return content
 
     # return (element_list, stop_token)
@@ -138,29 +137,29 @@ class _Parser:
         if parsemethod is None:
             parsemethod = self.parse_expression
 
-        with self._parentheses(start, stop) as start_token:
+        start_token = self.tokens.check_and_pop('OP', start)
+        if self.tokens.coming_up().startswith(['OP', stop]):
+            # empty list
+            return ([], self.tokens.pop())
+
+        elements = []
+        while True:
+            if self.tokens.coming_up().startswith(['OP', ',']):
+                raise CompileError("don't put a ',' here",
+                                   self.tokens.coming_up().location)
+            elements.append(parsemethod())
+
             if self.tokens.coming_up().startswith(['OP', stop]):
-                # empty list
-                return ([], self.tokens.pop())
+                return (elements, self.tokens.pop())
 
-            elements = []
-            while True:
-                if self.tokens.coming_up().startswith(['OP', ',']):
-                    raise CompileError("don't put a ',' here",
-                                       self.tokens.coming_up().location)
-                elements.append(parsemethod())
+            comma = self.tokens.check_and_pop('OP', ',')
+            if self.tokens.coming_up().startswith(['OP', ',']):
+                raise CompileError(
+                    "two ',' characters",
+                    Location.between(comma, self.tokens.coming_up()))
 
-                if self.tokens.coming_up().startswith(['OP', stop]):
-                    return (elements, self.tokens.pop())
-
-                comma = self.tokens.check_and_pop('OP', ',')
-                if self.tokens.coming_up().startswith(['OP', ',']):
-                    raise CompileError(
-                        "two ',' characters",
-                        Location.between(comma, self.tokens.coming_up()))
-
-                if self.tokens.coming_up().startswith(['OP', stop]):
-                    return (elements, self.tokens.pop())
+            if self.tokens.coming_up().startswith(['OP', stop]):
+                return (elements, self.tokens.pop())
 
     def parse_expression(self):
         coming_up = self.tokens.coming_up()
@@ -192,10 +191,10 @@ class _Parser:
     # rest of these methods are for parsing statements
 
     def parse_expression_statement(self):
-        # expression;
+        # expression and newline
         value = self.parse_expression()
-        semicolon = self.tokens.check_and_pop('OP', ';')
-        return ExpressionStatement(Location.between(value, semicolon), value)
+        self.tokens.pop_newline()
+        return value
 
     def assignment(self):
         # thing = value
@@ -203,61 +202,66 @@ class _Parser:
         target = self.parse_name()
         self.tokens.check_and_pop('OP', '=')
         value = self.parse_expression()
-        semicolon = self.tokens.check_and_pop('OP', ';')
-        return Assignment(Location.between(target, semicolon), target, value)
+        self.tokens.pop_newline()
+        return Assignment(Location.between(target, value), target, value)
 
     def parse_if(self):
-        # if (cond) { statements; }
+        # if cond { statements }
         the_if = self.tokens.check_and_pop('NAME', 'if')
-        condition = self.parse_parentheses()
+        condition = self.parse_expression()
+
         self.tokens.check_and_pop('OP', '{')
-
         body = []
-        while not self.tokens.coming_up().startswith(['OP', '}']):
-            body.extend(self.parse_statement())
 
+        # allow "if thing { }" without a newline
+        if not self.tokens.coming_up().startswith(['OP', '}']):
+            self.tokens.pop_newline()
+            while not self.tokens.coming_up().startswith(['OP', '}']):
+                body.extend(self.parse_statement())
         closing_brace = self.tokens.check_and_pop('OP', '}')
+
+        self.tokens.pop_newline()
         return If(Location.between(the_if, closing_brace), condition, body)
 
     def _type_and_name(self):
-        # Int a;
+        # Int a
         # this returns (typenode, name_string)
         typenode = self.parse_name()   # TODO: module's Thing
         name = self.parse_name()
         return (typenode, name)
 
     def parse_declaration(self) -> list:
-        # Int thing;
-        # Int thing = expr;
-        # TODO: module.Thingy thing;
+        # Int thing
+        # Int thing = expr
+        # TODO: module.Thingy thing
         #
-        # "Int thing = expr;" produces overlapping Declaration and
+        # "Int thing = expr" produces overlapping Declaration and
         # Assignment nodes, that's why this returns a list of nodes
         datatype = self.parse_name()   # TODO: module's Thing
         variable = self.parse_name()
 
-        third_thing = self.tokens.check_and_pop('OP')
-        if third_thing.value == ';':
-            return [Declaration(Location.between(datatype, third_thing),
+        if self.tokens.coming_up().kind == 'NEWLINE':
+            self.tokens.pop_newline()
+            return [Declaration(Location.between(datatype, variable),
                                 datatype, variable.name)]
 
-        assert third_thing.value == '='
+        self.tokens.check_and_pop('OP', '=')
         initial_value = self.parse_expression()
-        semicolon = self.tokens.check_and_pop('OP', ';')
+        self.tokens.pop_newline()
         return [Declaration(Location.between(datatype, variable),
                             datatype, variable.name),
-                Assignment(Location.between(variable, semicolon),
+                Assignment(Location.between(variable, initial_value),
                            variable, initial_value)]
 
     def parse_return(self):
         the_return = self.tokens.check_and_pop('NAME', 'return')
         value = self.parse_expression()
-        semicolon = self.tokens.check_and_pop('OP', ';')
-        return Return(Location.between(the_return, semicolon), value)
+        self.tokens.pop_newline()
+        return Return(Location.between(the_return, value), value)
 
     def parse_statement(self) -> list:
         # coming_up(1) and coming_up(2) work because there's always a
-        # semicolon and at least something before it
+        # newline and at least something before it
         if self.tokens.coming_up(1).kind == 'NAME':
             if self.tokens.coming_up(1).value == 'return':
                 return [self.parse_return()]
@@ -266,7 +270,11 @@ class _Parser:
             if self.tokens.coming_up(1).value == 'function':
                 return [self.parse_function_def()]
 
-            after_name = self.tokens.coming_up(2)
+            try:
+                after_name = self.tokens.coming_up(2)
+            except EOFError:
+                return [self.parse_expression_statement()]
+
             if after_name.startswith(['OP', '=']):
                 return [self.assignment()]
             if after_name.kind == 'NAME':
@@ -288,11 +296,14 @@ class _Parser:
         else:
             returntype = None
 
-        with self._parentheses('{', '}') as opening_brace:
-            body = []
-            while not self.tokens.coming_up().startswith(['OP', '}']):
-                body.extend(self.parse_statement())
-            closing_brace = self.tokens.check_and_pop('OP', '}')
+        opening_brace = self.tokens.check_and_pop('OP', '{')
+        if self.tokens.coming_up().kind == 'NEWLINE':
+            self.tokens.pop_newline()
+        body = []
+        while not self.tokens.coming_up().startswith(['OP', '}']):
+            body.extend(self.parse_statement())
+        closing_brace = self.tokens.check_and_pop('OP', '}')
+        self.tokens.pop_newline()
 
         return FunctionDef(Location.between(function_keyword, closing_brace),
                            name.name, args, returntype, body)

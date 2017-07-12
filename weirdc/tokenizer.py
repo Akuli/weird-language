@@ -11,9 +11,10 @@ import weirdc
 # https://docs.python.org/3/library/re.html#writing-a-tokenizer
 TOKEN_SPEC = [
     ('INTEGER', r'\d+'),                   # 123
-    ('OP', r"[=(){}\[\];,.]"),             # = ( ) { } [ ] ; , .
+    ('OP', r"[=(){}\[\],.]"),              # = ( ) { } [ ] , .
     ('NAME', r'[^\W\d]\w*'),               # message123
     ('STRING', r'"[^"\n]*"'),              # "hello world"
+    ('NEWLINE', r'\n'),                    # a \n character
     ('IGNORE', r'\s+|//[^\n]*|/\*.*\*/'),  # whitespace and comments
     ('ERROR', r'.'),                       # anything else
 ]
@@ -42,8 +43,12 @@ class Token(collections.namedtuple('Token', 'kind value location')):
         return all(a == b for a, b in zip(self, other))
 
 
-def tokenize(code):
-    """Turn a string into an iterator of Token objects."""
+def tokenize(code, trailing_newline=True):
+    r"""Turn a string into an iterator of Token objects.
+
+    If trailing_newline is True, a NEWLINE token will be added at the
+    end if the code doesn't end with a \n.
+    """
     lineno = 1
     line_start = 0
 
@@ -55,6 +60,18 @@ def tokenize(code):
         value = match.group(kind)
 
         # change this if you add multiline strings or something
+        if kind == 'NEWLINE':
+            # this needs to be handled specially because -1 is not a
+            # valid line start, but the location's end can extend past
+            # the real end of the line and will extend by 3 characters
+            start = match.start() - line_start
+            yield Token('NEWLINE', '\n',
+                        weirdc.Location(start, start+3, lineno))
+
+            lineno += 1
+            line_start = match.end()
+            continue
+
         if kind == 'IGNORE':
             if '\n' in value:
                 lineno += value.count('\n')
@@ -72,3 +89,8 @@ def tokenize(code):
         if kind == 'ERROR':
             raise weirdc.CompileError("I don't know what this is", location)
         yield Token(kind, value, location)
+
+    # i like how i get to (ab)use loop variables that aren't local to
+    # the loop... feels good
+    if kind != 'NEWLINE' and trailing_newline:
+        yield Token('NEWLINE', '\n', weirdc.Location(0, 3, lineno+1))
